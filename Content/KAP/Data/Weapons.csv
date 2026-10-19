@@ -1,0 +1,11 @@
+Name,Title,Kind,Damage,Range,Rate,Mag,Ammo,Spread,Pellets,Permit
+wrench,Кілт,melee,18,2.2,1.6,0,,0,1,false
+knife,Пышақ,melee,34,2.2,1.8,0,,0,1,false
+crowbar,Лом,melee,46,2.6,1.0,0,,0,1,false
+flare,Сигнал шамы,throw,0,22,1.0,0,flare,0,1,false
+flaregun,Сигнал тапаншасы,gun,30,70,1.0,1,flare_ammo,0.01,1,true
+pm,ПМ,gun,28,70,4,8,9mm,0.025,1,true
+shotgun,Мылтық,gun,13,32,1.1,2,12g,0.09,8,true
+ak,АК,gun,30,160,9,30,545,0.022,1,true
+sniper,Снайперлік мылтық,gun,120,550,0.8,5,762,0.002,1,true
+molotov,Молотов коктейлі,throw,70,22,0.8,0,molotov,0,1,true

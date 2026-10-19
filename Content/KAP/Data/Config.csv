@@ -1,0 +1,30 @@
+Name,Value,Note
+dayLengthSec,2880,1 ойын тәулігі = 48 минут
+startHour,12.5,басталатын сағат
+stage1Hours,6,ақау → ағу
+stage2Hours,5,ағу → өрт
+fireHours,2,өрт → жоғалу
+hazardScale,0.06,Байес P × осы = сағаттық қауіп
+neighborRadius,420,көрші радиусы (м)
+leakDoseRate,7,ағу кезіндегі доза мЗв/сағ
+fireDoseBurst,260,өрт басталғандағы доза
+dosePoisoned,100,уланған шегі
+doseSick,250,ауру шегі
+doseDying,450,өлім алдында шегі
+doseDeath,650,өлім шегі
+mutateChance,0.3,мутантқа айналу ықтималдығы
+playerLeakDose,0.9,ойыншы дозасы мЗв/сек
+waterDecay,5,су / ойын сағаты
+waterHeatMul,2.2,ыстықтағы көбейткіш
+staminaRun,14,жүгіру / сек
+monsterBase,4,монстр базалық саны
+nightMul,2.5,түнгі көбейткіш
+failBurned,8,жанған ұңғыма шегі
+failDeadPct,0.6,өлім үлесі шегі
+successWells,11,«Құтқару» үшін ұңғыма
+successMutation,70,«Құтқару» үшін мутация шегі
+mutationPerFire,7,өрт кезіндегі мутация
+mutationPerDeath,1.2,өлім кезіндегі мутация
+mutationPerBoss,-10,босс өлгенде
+brigadeUnlockWells,3,бригадалар ашылуы
+accessPermitWells,5,кіру рұқсаты

@@ -1,0 +1,4 @@
+Name,Title,Tools,X,Y,Range,Speed
+b1,«Алтай» бригадасы,pump|pipe|electric,-520,880,1500,14
+b2,«Сұңқар» бригадасы,electric|acid|pump,780,830,1500,14
+b3,«Жебе» бригадасы,fire|pipe|acid,640,-790,1500,14
