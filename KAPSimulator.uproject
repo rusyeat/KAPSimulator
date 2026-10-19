@@ -1,0 +1,30 @@
+﻿{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "KAP Simulator вЂ” survival-СЌРєС€РЅ, ISR СѓСЂР°РЅ РєРµРЅС–С€С–, 21 Т±ТЈТ“С‹РјР°",
+	"Modules": [
+		{
+			"Name": "KAPSimulator",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"UMG"
+			]
+		},
+		{
+			"Name": "KAPSimulatorEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		}
+	],
+	"Plugins": [
+		{ "Name": "ChaosVehiclesPlugin", "Enabled": true },
+		{ "Name": "GameplayAbilities", "Enabled": true },
+		{ "Name": "PythonScriptPlugin", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+		{ "Name": "EditorScriptingUtilities", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+		{ "Name": "ModelingToolsEditorMode", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+		{ "Name": "GameInputWindows", "Enabled": true, "SupportedTargetPlatforms": [ "Win64" ], "TargetDenyList": [ "Server" ] }
+	]
+}
