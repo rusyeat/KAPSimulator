@@ -1,4 +1,4 @@
-// AKAPWorldBuilder — деректер кестелерінен әлемді құрастырады: ұңғымалар, ауылдар, басқарма, мұнаралар,
+﻿// AKAPWorldBuilder — деректер кестелерінен әлемді құрастырады: ұңғымалар, ауылдар, басқарма, мұнаралар,
 // су қоймасы, бандит лагері, жолдар, сексеуіл мен тастар (HISM), көліктер, жәшіктер мен әрекет нүктелері
 #pragma once
 
@@ -30,6 +30,11 @@ public:
 	float Z(FVector2D PosM) const;
 private:
 	void BuildRoads();
+	/** Жолдың үстіне түсіп қалған ғимараттарды алып тастау */
+	void ClearRoadOverlaps();
+	bool OnRoad(const class AKAPStructure* S, float Margin) const;
+	float DistToRoadCm(FVector2D Pcm) const;
+	bool bSplittingFence = false;
 	void BuildVegetation();
 	void BuildVehicles();
 	UPROPERTY() TObjectPtr<UHierarchicalInstancedStaticMeshComponent> Roads;

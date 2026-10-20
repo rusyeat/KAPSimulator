@@ -22,8 +22,65 @@ float AKAPWorldBuilder::Z(FVector2D P) const { return KAPVis::GroundZ(GetWorld()
 AKAPStructure* AKAPWorldBuilder::SpawnStruct(int32 Type, FVector2D P, float Yaw, FVector Size, FLinearColor Color, int32 Seed, bool bBright)
 {
 	FActorSpawnParameters SP; SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const EStructType T = (EStructType)Type;
+	// қоршау: жол қиып өтетін жерлерде ойық қалдырып, бірнеше бөлікке бөлеміз
+	if (T == EStructType::Fence && !bSplittingFence)
+	{
+		const FRotator Rt(0, Yaw, 0);
+		const FVector2D Ax(Rt.Vector().X, Rt.Vector().Y);
+		const float Half = Size.X * 0.5f;
+		TArray<bool> Blocked; const int32 N = FMath::Max(1, FMath::CeilToInt32(Size.X / 100.f));
+		for (int32 i = 0; i <= N; i++) Blocked.Add(DistToRoadCm(P * 100.0 + Ax * (-Half + Size.X * i / N)) < 450.f);
+		AKAPStructure* First = nullptr; int32 i0 = -1;
+		bSplittingFence = true;
+		for (int32 i = 0; i <= N + 1; i++)
+		{
+			const bool bFree = i <= N && !Blocked[i];
+			if (bFree && i0 < 0) i0 = i;
+			if (!bFree && i0 >= 0)
+			{
+				const float A = -Half + Size.X * i0 / N, B = -Half + Size.X * (i - 1) / N;
+				if (B - A >= 200.f)
+				{
+					const FVector2D Mid = P + Ax * ((A + B) * 0.5f / 100.f);
+					AKAPStructure* Pc = SpawnStruct(Type, Mid, Yaw, FVector(B - A, Size.Y, Size.Z), Color, Seed, bBright);
+					if (!First) First = Pc;
+				}
+				i0 = -1;
+			}
+		}
+		bSplittingFence = false;
+		if (Blocked.Contains(true)) UE_LOG(LogTemp, Display, TEXT("KAPROAD fence (%.0f, %.0f): жолға ойық қалдырылды"), P.X, P.Y);
+		return First;
+	}
 	AKAPStructure* S = GetWorld()->SpawnActor<AKAPStructure>(FVector(P.X * 100, P.Y * 100, Z(P) - 5), FRotator(0, Yaw, 0), SP);
-	if (S) S->Build((EStructType)Type, Size, Color, Seed, bBright);
+	if (!S) return nullptr;
+	S->Type = T; S->BuildSize = Size;
+	if (T != EStructType::Fence && OnRoad(S, 150.f))
+	{
+		const bool bDecor = T == EStructType::House || T == EStructType::Ruin || T == EStructType::Yurt || T == EStructType::Tent || T == EStructType::Campfire
+			|| T == EStructType::Barrier || T == EStructType::Crate || T == EStructType::Silo;
+		if (bDecor)
+		{
+			// әшекей ғимарат жолдың үстінде — алып тастаймыз
+			UE_LOG(LogTemp, Display, TEXT("KAPROAD removed type=%d at (%.0f, %.0f) m"), Type, P.X, P.Y);
+			S->Destroy();
+			return nullptr;
+		}
+		// сюжетке керек ғимарат: жолдан шетке жылжытамыз (жақын бос орын, 4–60 м)
+		bool bMoved = false;
+		const FVector2D H = S->FootprintHalf();
+		for (float Rr = 4.f; Rr <= 60.f && !bMoved; Rr += 2.f)
+			for (int32 k = 0; k < 16 && !bMoved; k++)
+			{
+				const float A = k / 16.f * UE_TWO_PI;
+				const FVector2D Q = P + FVector2D(FMath::Cos(A), FMath::Sin(A)) * (Rr + H.GetMax() / 100.f);
+				S->SetActorLocation(FVector(Q.X * 100, Q.Y * 100, Z(Q) - 5));
+				if (!OnRoad(S, 150.f)) { bMoved = true; UE_LOG(LogTemp, Display, TEXT("KAPROAD moved type=%d (%.0f, %.0f) -> (%.0f, %.0f) m"), Type, P.X, P.Y, Q.X, Q.Y); }
+			}
+		if (!bMoved) S->SetActorLocation(FVector(P.X * 100, P.Y * 100, Z(P) - 5));
+	}
+	S->Build(T, Size, Color, Seed, bBright);
 	return S;
 }
 
@@ -158,6 +215,7 @@ void AKAPWorldBuilder::BuildAll()
 	// ---- мутант ұялары ----
 	for (const TCHAR* Id : { TEXT("nest1"), TEXT("nest2"), TEXT("nest3"), TEXT("nest4") }) SpawnStruct((int32)EStructType::Nest, L(Id), 0, FVector(1), FLinearColor::White, FCString::Strlen(Id) * 13);
 	BuildRoads();
+	ClearRoadOverlaps(); // тексеріс: жолда ғимарат қалмағанын логқа жазады
 	BuildVegetation();
 	BuildVehicles();
 	AKAPStructure::InvalidateCache();
@@ -383,4 +441,57 @@ void AKAPWorldBuilder::BuildVehicles()
 		H->Id = Key; H->Def = Row; H->Pawn = V; H->State = Row.State; H->Fuel = Row.FuelCap * (Key == "bukhanka" ? 0.6f : 0.4f);
 		Vehicles.Add(H);
 	});
+}
+
+/** Жол (ені 5 м) ғимараттың табанымен қиылыса ма: жол бойынша 1 м сайын нүктелерді ғимараттың жергілікті осьтеріне ауыстырып тексереміз */
+bool AKAPWorldBuilder::OnRoad(const AKAPStructure* S, float Margin) const
+{
+	const FVector2D H = S->FootprintHalf();
+	if (H.IsZero()) return false;
+	const UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
+	const FTransform Xf = S->GetActorTransform();
+	const float Rad = H.Size() + 300.f;
+	const FVector2D C(S->GetActorLocation());
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges)
+	{
+		const FVector2D A = D->Graph.Nodes[E.A].Pos * 100.0, B = D->Graph.Nodes[E.B].Pos * 100.0;
+		// алдымен жылдам: сегментке дейінгі қашықтық
+		const FVector2D V = B - A;
+		const double Tt = FMath::Clamp(FVector2D::DotProduct(C - A, V) / FMath::Max(1.0, V.SizeSquared()), 0.0, 1.0);
+		if (FVector2D::Distance(C, A + V * Tt) > Rad) continue;
+		const int32 N = FMath::Max(2, FMath::CeilToInt32(V.Size() / 100.0));
+		for (int32 i = 0; i <= N; i++)
+		{
+			const FVector2D P = FMath::Lerp(A, B, (double)i / N);
+			const FVector L = Xf.InverseTransformPositionNoScale(FVector(P.X, P.Y, Xf.GetLocation().Z));
+			if (FMath::Abs(L.X) < H.X + 250.f + Margin && FMath::Abs(L.Y) < H.Y + 250.f + Margin) return true;
+		}
+	}
+	return false;
+}
+
+void AKAPWorldBuilder::ClearRoadOverlaps()
+{
+	int32 Removed = 0;
+	TArray<AKAPStructure*> Kill;
+	for (KAPReg::TIter<AKAPStructure> It(GetWorld(), KAPReg::Structures()); It; ++It)
+	{
+		AKAPStructure* S = *It;
+		if (!OnRoad(S, 0.f)) continue;
+		UE_LOG(LogTemp, Display, TEXT("KAPROAD on-road: type=%d at (%.0f, %.0f) m size=%s"), (int32)S->Type, S->GetActorLocation().X / 100.f, S->GetActorLocation().Y / 100.f, *S->BuildSize.ToString());
+		Kill.Add(S);
+	}
+	UE_LOG(LogTemp, Display, TEXT("KAPROAD total on-road structures: %d"), Kill.Num());
+}
+float AKAPWorldBuilder::DistToRoadCm(FVector2D Pcm) const
+{
+	const UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
+	double Best = 1e12;
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges)
+	{
+		const FVector2D A = D->Graph.Nodes[E.A].Pos * 100.0, B = D->Graph.Nodes[E.B].Pos * 100.0, V = B - A;
+		const double Tt = FMath::Clamp(FVector2D::DotProduct(Pcm - A, V) / FMath::Max(1.0, V.SizeSquared()), 0.0, 1.0);
+		Best = FMath::Min(Best, FVector2D::Distance(Pcm, A + V * Tt));
+	}
+	return (float)Best;
 }

@@ -25,6 +25,7 @@ UStaticMeshComponent* AKAPStructure::Box(FVector Pos, FVector Size, const FKAPMa
 void AKAPStructure::Build(EStructType InType, FVector S, FLinearColor Color, int32 Seed, bool bBright)
 {
 	Type = InType;
+	BuildSize = S;
 	KAPReg::Add(KAPReg::Structures(), this);
 	FRandomStream R(Seed);
 	const FTransform Xf = GetActorTransform();
@@ -369,4 +370,29 @@ FString AKAPInteractSpot::GetInteractText(AKAPCharacter*) const
 void AKAPInteractSpot::Interact(AKAPCharacter*)
 {
 	if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->SpotUse(this);
+}
+
+FVector2D AKAPStructure::FootprintHalf() const
+{
+	const FVector& S = BuildSize;
+	switch (Type)
+	{
+	case EStructType::Wagon: return FVector2D(440, 170);
+	case EStructType::House: case EStructType::Ruin: return FVector2D(S.X * 0.5f + 30, S.Y * 0.5f + 30);
+	case EStructType::Workshop: return FVector2D((S.X > 2000.f ? 2200.f : 1800.f) * 0.5f + 20, 620);
+	case EStructType::HQOffice: return FVector2D(530, 430);
+	case EStructType::Yurt: return FVector2D(320, 320);
+	case EStructType::Tent: return FVector2D(240, 240);
+	case EStructType::Campfire: return FVector2D(100, 100);
+	case EStructType::Tower: return FVector2D(130, 130);
+	case EStructType::Tank: return FVector2D(1650, 1020);
+	case EStructType::Barrier: return FVector2D(S.X * 0.5f, 30);
+	case EStructType::GuardPost: return FVector2D(120, 120);
+	case EStructType::Fence: return FVector2D(S.X * 0.5f, 12);
+	case EStructType::Gate: return FVector2D(420, 15);
+	case EStructType::Wreck: return FVector2D(200, 110);
+	case EStructType::Crate: return FVector2D(55, 40);
+	case EStructType::Silo: return FVector2D(160, 160);
+	default: return FVector2D::ZeroVector; // ұя, сүйектер — жалпақ, жолға кедергі емес
+	}
 }

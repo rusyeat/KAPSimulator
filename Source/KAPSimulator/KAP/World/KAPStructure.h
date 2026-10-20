@@ -23,6 +23,9 @@ public:
 	void Build(EStructType InType, FVector Size, FLinearColor Color, int32 Seed = 0, bool bBright = false);
 
 	EStructType Type = EStructType::House;
+	FVector BuildSize = FVector::ZeroVector;
+	/** Жердегі табан (жарты өлшем, см, актердің жергілікті осьтерінде); 0 — тексерілмейді */
+	FVector2D FootprintHalf() const;
 	TArray<FBox2D> IndoorBoxes;   // әлем см
 	float ShadeR = 0.f;           // см
 	bool bFire = false;
