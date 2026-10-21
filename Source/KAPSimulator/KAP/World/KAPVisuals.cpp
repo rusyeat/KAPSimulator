@@ -124,3 +124,23 @@ namespace KAPVis
 		return Fallback;
 	}
 }
+
+namespace KAPVis
+{
+	UStaticMeshComponent* AddMesh(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, FVector Pos, FVector Scale, const FKAPMat& M, FRotator Rot, bool bCollision)
+	{
+		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(Owner);
+		C->SetStaticMesh(Mesh);
+		C->SetupAttachment(Parent ? Parent : Owner->GetRootComponent());
+		C->SetRelativeLocation(Pos);
+		C->SetRelativeRotation(Rot);
+		C->SetRelativeScale3D(Scale);
+		C->SetMaterial(0, MakeMID(C, M));
+		C->SetCollisionEnabled(bCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+		C->SetCollisionProfileName(bCollision ? UCollisionProfile::BlockAll_ProfileName : UCollisionProfile::NoCollision_ProfileName);
+		C->SetCanEverAffectNavigation(false);
+		C->RegisterComponent();
+		Owner->AddInstanceComponent(C);
+		return C;
+	}
+}

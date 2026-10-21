@@ -82,6 +82,7 @@ public:
 	static const KAPAI::FQPolicy& GetPolicy(KAPAI::EQProfile P);
 	static void TrainPolicies();
 	static double TrainMs;
+	bool IsFemale() const { return bFemale; }
 private:
 	void CivilAI(float Dt);
 	void CombatAI(float Dt);

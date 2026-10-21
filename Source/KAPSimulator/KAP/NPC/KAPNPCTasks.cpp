@@ -53,7 +53,7 @@ void AKAPNPC::SayTask(const TCHAR* Kk)
 	if (FVector::Dist(PC->GetActorLocation(), GetActorLocation()) > 1200.f) return;
 	TaskSayCd = FMath::FRandRange(25.f, 45.f);
 	if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Subtitle(Kk, FString(), DisplayName, 3.f);
-	if (UKAPAudio* A = UKAPAudio::Get(this)) A->Voice(GetActorLocation() + FVector(0, 0, 60), FMath::Clamp(FCString::Strlen(Kk) * 0.06f, 0.8f, 2.6f), bFemale, 0.9f);
+	if (UKAPAudio* A = UKAPAudio::Get(this)) if (!A->Speak(Kk, GetActorLocation() + FVector(0, 0, 60), bFemale, 0, 1.1f, FMath::FRandRange(0.95f, 1.05f))) A->Voice(GetActorLocation() + FVector(0, 0, 60), FMath::Clamp(FCString::Strlen(Kk) * 0.06f, 0.8f, 2.6f), bFemale, 0.9f);
 }
 
 void AKAPNPC::PickTask()
@@ -132,7 +132,7 @@ bool AKAPNPC::TaskTick(float Dt)
 					SetCarry(false); SetTool(false);
 					static const TCHAR* Sh[] = { TEXT("Қашыңдар! Мұнда бір нәрсе бар!"), TEXT("Көмектесіңдер!"), TEXT("Құдай-ау, анау не?!") };
 					TaskSayCd = 0; SayTask(Sh[FMath::RandRange(0, 2)]);
-					if (UKAPAudio* A = UKAPAudio::Get(this)) A->Creature(GetActorLocation() + FVector(0, 0, 60), 1, 0.5f);
+					if (UKAPAudio* A = UKAPAudio::Get(this)) A->Yell(GetActorLocation() + FVector(0, 0, 60), false);
 					break;
 				}
 		}

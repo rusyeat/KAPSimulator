@@ -94,11 +94,12 @@ void AKAPVehicleHandle::Tick(float Dt)
 	UpdateLights(Dt);
 	if (WheelPivots.Num()) UpdateVisualWheels();
 	// декоративті дөңгелектер: v / R бұрыштық жылдамдықпен айналады
-	if (FakeWheels.Num())
+	if (FakeWheels.Num() || FakePivots.Num())
 	{
 		const float Fwd = FVector::DotProduct(Pawn->GetVelocity(), Pawn->GetActorForwardVector());
 		FakeRoll = FMath::Fmod(FakeRoll - FMath::RadiansToDegrees(Fwd / FMath::Max(10.f, FakeR)) * Dt, 360.f);
 		for (UStaticMeshComponent* W : FakeWheels) if (W) W->SetRelativeRotation(FRotator(FakeRoll, 0, 90));
+		for (USceneComponent* W : FakePivots) if (W) W->SetRelativeRotation(FRotator(FakeRoll, 0, 0));
 	}
 	if (!bActive) { Heat = FMath::FInterpTo(Heat, 40.f, Dt, 0.01f); return; }
 	const AWeatherManager* WX = AWeatherManager::Get(GetWorld());
@@ -167,7 +168,7 @@ void AKAPVehicleHandle::UpdateVisualWheels()
 	{
 		if (!WheelPivots[i]) continue;
 		const FTransform T = M->GetSocketTransform(WheelBones[i], RTS_Component);
-		FVector L = T.GetLocation(); L.Y *= VisK; L.Z -= VisDrop;
+		FVector L = T.GetLocation(); L.X = VisXc + (L.X - VisXc) * VisKX; L.Y *= VisK; L.Z -= VisDrop;
 		// бастапқы бұрышқа қатысты өзгеріс: айналу (домалау) + руль + аспаның қисаюы
 		WheelPivots[i]->SetRelativeLocationAndRotation(L, T.GetRotation() * WheelRest[i].Inverse());
 	}

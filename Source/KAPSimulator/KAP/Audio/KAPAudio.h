@@ -39,6 +39,15 @@ private:
 	uint32 Seed = 12345;
 };
 
+/** Жазылған дыбыстар банкі: /Game/KAP/Audio/<SFX|Music>/<Атау>_<i> */
+USTRUCT()
+struct FKAPSoundBank
+{
+	GENERATED_BODY()
+	UPROPERTY() TArray<TObjectPtr<USoundWave>> W;
+	int32 Last = -1;
+	bool bLoaded = false;
+};
 UCLASS()
 class KAPSIMULATOR_API UKAPAudio : public UWorldSubsystem
 {
@@ -94,6 +103,21 @@ public:
 	void Impact(FVector Loc, int32 Type, float Vol = 0.7f);
 	/** 0 фонарь, 1 қару ауыстыру, 2 бос шүріппе */
 	void Foley(int32 Type);
+	// ---- жазылған дыбыстар (CC0/CC-BY, KAPAudioBanks.cpp) ----
+	/** Банктен кездейсоқ дыбыс (қатарынан қайталамайды); жоқ болса nullptr */
+	USoundWave* Pick(FName Bank);
+	/** Банктен ойнату: b2D — құлақта, әйтпесе Loc нүктесінде (3D) */
+	UAudioComponent* PlayBank(FName Bank, FVector Loc, float Vol = 1.f, float Pitch = 1.f, bool b2D = false, float StartTime = 0.f, bool bFar = false);
+	/** Сөйлемді жазылған дауыспен айту: Mode 0 — 3D (NPC), 1 — 2D (ойыншы/диктор), 2 — рация. Дауыс табылмаса false */
+	bool Speak(const FString& Text, FVector Loc, bool bFemale, int32 Mode = 0, float Vol = 1.f, float Pitch = 1.f);
+	void StopSpeech();
+	/** NPC атысы (алыста, жаңғырықпен) */
+	void ShotAt(FName Weapon, FVector Loc);
+	/** Адамның айқайы: қорқыныш/ауырсыну (bDeath — өлім айқайы) */
+	void Yell(FVector Loc, bool bDeath);
+	static uint32 VoHash(const FString& S);
+	bool HasBank(FName Bank);
+	bool MoanAt(FVector Loc, float Pitch, float Vol, float Len, bool bFar = false);
 	/** Тест: барлық дыбысты Saved/SoundDump/*.wav етіп жазып, статистикасын логқа шығару (-kapsounddump) */
 	void DumpAll();
 	/** Тіршілік дауысы: 0 ыңырсу, 1 шыңғырық, 2 ырыл, 3 сыбыр */
@@ -136,4 +160,13 @@ private:
 	UPROPERTY() TArray<TObjectPtr<UAudioComponent>> Comps;
 	UPROPERTY() TArray<TObjectPtr<USoundWaveProcedural>> OneShots;
 	bool bInit = false;
+	UPROPERTY() TMap<FName, FKAPSoundBank> Banks;
+	UPROPERTY() TObjectPtr<UAudioComponent> EngLo;
+	UPROPERTY() TObjectPtr<UAudioComponent> EngHi;
+	UPROPERTY() TObjectPtr<UAudioComponent> MusCalm;
+	UPROPERTY() TObjectPtr<UAudioComponent> MusDanger;
+	UPROPERTY() TObjectPtr<UAudioComponent> SpeechC;
+	float EngOn = 0.f, EngRpm = 0.f, EngMis = 0.f, EngLoV = 0.f, EngHiV = 0.f, MusI = 0.f, MusV = 0.f, MusCalmV = 0.f, MusDangerV = 0.f;
+	bool bRealEngine = false, bRealMusic = false;
+	void UpdateReal(float Dt);
 };

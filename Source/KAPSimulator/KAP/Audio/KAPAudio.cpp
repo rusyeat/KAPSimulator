@@ -218,7 +218,7 @@ void UKAPAudio::SetBody(float Exhaust, float Fear)
 	Breath->Rate = 14.f + Exhaust * 26.f;
 	Breath->TargetGain = FMath::Max(0.f, Exhaust - 0.35f) * 0.18f;
 }
-void UKAPAudio::SetEngineLoad(float Rpm01, float Mis) { if (Engine) { Engine->Misfire = Mis; Engine->ToneHz = 32.f + Rpm01 * 95.f; Engine->Cutoff = 0.04f + Rpm01 * 0.08f; } }
+void UKAPAudio::SetEngineLoad(float Rpm01, float Mis) { if (bRealEngine) { EngRpm = Rpm01; EngMis = Mis; if (Engine) Engine->TargetGain = 0.f; return; } if (Engine) { Engine->Misfire = Mis; Engine->ToneHz = 32.f + Rpm01 * 95.f; Engine->Cutoff = 0.04f + Rpm01 * 0.08f; } }
 
 void UKAPAudio::Stinger(bool bDanger)
 {
@@ -231,6 +231,7 @@ void UKAPAudio::Stinger(bool bDanger)
 
 void UKAPAudio::Update(float Dt, FVector L, bool bNight, float Storm)
 {
+	UpdateReal(Dt);
 	// реверберация: баспанада — шағын металл бөлме, далада — ашық кеңістік (әлсіз, ұзақ)
 	const int32 Want = IndoorK > 0.5f ? 1 : 0;
 	if (Want != RevState)
@@ -286,8 +287,8 @@ void UKAPAudio::Update(float Dt, FVector L, bool bNight, float Storm)
 }
 void UKAPAudio::SetFire(float L) { if (Fire) Fire->TargetGain = FMath::Clamp(L, 0.f, 1.f) * 0.3f; }
 void UKAPAudio::SetRadio(float L) { if (Radio) Radio->TargetGain = FMath::Clamp(L, 0.f, 1.f) * 0.12f; }
-void UKAPAudio::SetEngine(bool bOn, float V) { if (Engine) { Engine->TargetGain = bOn ? 0.08f + FMath::Min(0.1f, V * 0.004f) : 0.f; Engine->ToneHz = 38.f + V * 3.f; } }
-void UKAPAudio::StopLoops() { for (UKAPSynthWave* W : { Wind.Get(), Rain.Get(), Fire.Get(), Radio.Get(), Engine.Get() }) if (W) W->TargetGain = 0; }
+void UKAPAudio::SetEngine(bool bOn, float V) { if (HasBank("Engine")) { bRealEngine = true; EngOn = bOn ? 1.f : 0.f; EngRpm = FMath::Max(EngRpm * 0.98f, FMath::Clamp(V / 22.f, 0.f, 1.f)); if (Engine) Engine->TargetGain = 0.f; return; } if (Engine) { Engine->TargetGain = bOn ? 0.08f + FMath::Min(0.1f, V * 0.004f) : 0.f; Engine->ToneHz = 38.f + V * 3.f; } }
+void UKAPAudio::StopLoops() { EngOn = 0.f; MusV = 0.f; for (UKAPSynthWave* W : { Wind.Get(), Rain.Get(), Fire.Get(), Radio.Get(), Engine.Get() }) if (W) W->TargetGain = 0; }
 
 void UKAPAudio::PlayBuffer(const TArray<int16>& Pcm, float Vol)
 {
@@ -348,7 +349,7 @@ void UKAPAudio::Play(EKAPSound S, float Vol)
 	{
 	case EKAPSound::Swing: Noise(B, 0.15f, 0.25f, 0.15f, 0.06f); break;
 	case EKAPSound::Hit: Noise(B, 0.1f, 0.5f, 0.3f, 0.03f); break;
-	case EKAPSound::Hurt: Tone(B, 0, 0.25f, 160, 0.3f, 90, 2); break;
+	case EKAPSound::Hurt: if (HasBank("Grunt")) { PlayBank("Grunt", FVector::ZeroVector, Vol, FMath::FRandRange(0.95f, 1.05f), true); return; } Tone(B, 0, 0.25f, 160, 0.3f, 90, 2); break;
 	case EKAPSound::Pickup: Tone(B, 0, 0.08f, 660, 0.25f); Tone(B, 0.08f, 0.1f, 990, 0.25f); break;
 	case EKAPSound::Growl: Tone(B, 0, 0.7f, 75, 0.45f, 45, 2); break;
 	case EKAPSound::Howl: Tone(B, 0, 1.6f, 380, 0.3f, 620, 1); Tone(B, 1.4f, 1.2f, 620, 0.2f, 300, 1); break;
@@ -525,6 +526,15 @@ USoundAttenuation* UKAPAudio::AttenFar()
 // Беткейге қарай қадам: 0 — құм, 1 — металл, 2 — ағаш/еден, 3 — тас/бетон
 void UKAPAudio::Footstep(FVector Loc, int32 Surface, float Vol)
 {
+	{
+		static const FName FB[5] = { FName("StepSand"), FName("StepMetal"), FName("StepWood"), FName("StepConcrete"), FName("StepDirt") };
+		if (Surface >= 0 && Surface < 5 && HasBank(FB[Surface]))
+		{
+			PlayBank(FB[Surface], Loc, Vol * (Surface == 1 ? 0.5f : 1.f), FMath::FRandRange(0.9f, 1.1f));
+			if (Surface == 0 && FMath::FRand() < 0.45f) PlayBank("StepDirt", Loc, Vol * 0.3f, FMath::FRandRange(0.85f, 1.f)); // құмның қытыры
+			return;
+		}
+	}
 	TArray<int16> B;
 	switch (Surface)
 	{
@@ -586,6 +596,9 @@ void UKAPAudio::SetDread(float L, float Tension)
 // Тіршілік дауыстары: 0 — сәулеленген адамның ыңырсуы, 1 — шыңғырық, 2 — қасқыр ырылы, 3 — сыбыр
 void UKAPAudio::Creature(FVector Loc, int32 Type, float Vol, bool bFar)
 {
+	// 0 — жазылған ыңырсу; 1 — синтез шыңғырығының астына жоғары ыңырсу қабаты
+	if (Type == 0 && MoanAt(Loc, FMath::FRandRange(0.82f, 0.98f), Vol, 2.4f, bFar)) return;
+	if (Type == 1) MoanAt(Loc, FMath::FRandRange(1.25f, 1.45f), Vol * 0.7f, 1.3f, bFar);
 	FRandomStream Rg(FMath::Rand());
 	const float Dur = Type == 0 ? Rg.FRandRange(1.2f, 2.2f) : Type == 1 ? Rg.FRandRange(0.9f, 1.4f) : Type == 2 ? Rg.FRandRange(0.8f, 1.3f) : Rg.FRandRange(1.2f, 1.8f);
 	const int32 N = (int32)(Dur * SR);
@@ -622,6 +635,7 @@ void UKAPAudio::Creature(FVector Loc, int32 Type, float Vol, bool bFar)
 
 void UKAPAudio::SetMusic(float Intensity, float Volume)
 {
+	if (HasBank("Ambient")) { bRealMusic = true; MusI = FMath::Clamp(Intensity, 0.f, 1.f); MusV = FMath::Clamp(Volume, 0.f, 1.f); if (Music) Music->TargetGain = 0.f; return; }
 	if (!Music) return;
 	Music->Rate = FMath::Clamp(Intensity, 0.f, 1.f);
 	const float Duck = 1.f - DuckAmt * 0.5f * FMath::Clamp(DuckT, 0.f, 1.f);
@@ -631,6 +645,14 @@ void UKAPAudio::SetMusic(float Intensity, float Volume)
 // Есік: сықыр — «жабысып-сырғу» импульстері резонатордан өтеді (жиілігі баяу өзгереді), соңында тарс жабылу
 void UKAPAudio::Door(FVector Loc, int32 Type)
 {
+	if (HasBank("DoorOpen") && GetWorld())
+	{
+		PlayBank("DoorOpen", Loc, 0.9f, FMath::FRandRange(0.92f, 1.05f));
+		if (Type == 0) PlayBank("Creak", Loc, 0.45f, FMath::FRandRange(0.8f, 0.95f));
+		TWeakObjectPtr<UKAPAudio> Self(this); FTimerHandle H;
+		GetWorld()->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([Self, Loc]() { if (Self.IsValid()) Self->PlayBank("DoorClose", Loc, 0.9f, FMath::FRandRange(0.92f, 1.05f)); }), 0.75f, false);
+		return;
+	}
 	FRandomStream Rg(FMath::Rand());
 	const float Dur = Rg.FRandRange(0.6f, 1.1f);
 	const int32 N = (int32)(Dur * SR);
@@ -703,6 +725,10 @@ float UKAPAudio::Dombra()
 // ---- қару дыбыстары: шытырлақ (дыбыстан жылдам оқ) + газ денесі (төмен гүріл) + механика (затвор) + дала жаңғырығы ----
 void UKAPAudio::Shot(FName W)
 {
+	{
+		const FName B = W == "sniper" ? FName("GunSniper") : W == "shotgun" ? FName("GunShotgun") : W == "ak" ? FName("GunAK") : FName("GunPM");
+		if (HasBank(B)) { PlayBank(B, FVector::ZeroVector, W == "flaregun" ? 0.55f : 0.95f, (W == "flaregun" ? 1.3f : 1.f) * FMath::FRandRange(0.96f, 1.04f), true); Duck(0.4f, 0.4f); return; }
+	}
 	struct FGun { float Crack, CrackCut, Body, BodyHz, BodyDec, Mech, MechHz, Echo, Len; };
 	FGun G = { 0.7f, 0.5f, 0.6f, 90.f, 0.09f, 0.25f, 1900.f, 0.3f, 0.6f };                       // ПМ
 	if (W == "ak") G = { 0.95f, 0.6f, 0.8f, 75.f, 0.11f, 0.3f, 1500.f, 0.35f, 0.8f };
@@ -778,6 +804,10 @@ void UKAPAudio::Whoosh(bool bHeavy)
 // Соққы: 0 — дене, 1 — металл (шыңыл), 2 — ағаш/жәшік, 3 — құм (оқ тигенде), 4 — рация сыртылы
 void UKAPAudio::Impact(FVector Loc, int32 Type, float Vol)
 {
+	{
+		static const FName IB[4] = { FName("ImpBody"), FName("ImpMetal"), FName("ImpWood"), FName("ImpSand") };
+		if (Type >= 0 && Type < 4 && HasBank(IB[Type])) { PlayBank(IB[Type], Loc, Vol, FMath::FRandRange(0.9f, 1.1f)); return; }
+	}
 	TArray<int16> B;
 	switch (Type)
 	{

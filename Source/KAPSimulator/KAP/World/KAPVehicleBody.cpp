@@ -62,6 +62,8 @@ void AKAPVehicleHandle::BuildBody()
 		TArray<UStaticMeshComponent*> Old; Pawn->GetComponents<UStaticMeshComponent>(Old);
 		for (UStaticMeshComponent* C : Old) { C->SetVisibility(false); C->SetCastShadow(false); } // Chassis (SM_Offroad_Body), 4× SM_Offroad_Tire
 	}
+	// тегіс корпус мештері бар болса — жаңа құрастыру
+	if (BuildShellBody(M, Xf, Xr, Yw, Zc, R)) return;
 	const float Rv = R * 0.82f;
 	VisK = 0.56f; VisDrop = R - Rv; // нақты УАЗ: дөңгелек аралығы ≈1.44 м, корпус ені ≈1.94 м
 	{

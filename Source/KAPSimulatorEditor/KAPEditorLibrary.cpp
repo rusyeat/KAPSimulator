@@ -1134,3 +1134,5 @@ bool UKAPEditorLibrary::BuildEverything(const FString& MapPath)
 	UE_LOG(LogTemp, Display, TEXT("KAP: деңгей құрылды: %s (%s)"), *MapPath, bOk ? TEXT("сақталды") : TEXT("САҚТАЛМАДЫ"));
 	return bOk;
 }
+
+#include "KAPVehicleGen.inl"

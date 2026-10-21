@@ -115,6 +115,35 @@ void AKAPGameMode::BeginPlay()
 	Weather->UpdateEnv(Ss, 0.016f, 0);
 	// Автоматты тексеру: -kapautotest (скриншоттар Saved/Screenshots ішіне)
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapsounddump"))) { FTimerHandle Hd; GetWorldTimerManager().SetTimer(Hd, FTimerDelegate::CreateLambda([this]() { UKAPAudio::Get(this)->DumpAll(); FGenericPlatformMisc::RequestExit(false); }), 2.f, false); }
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvehshots")))
+	{
+		// Көлік корпустарын тексеру: әр көлік — алдыңғы және артқы 3/4 көрініс, күндізгі жарық
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPV_") + N + TEXT(".png"), true, false); };
+		FTimerHandle H0; GetWorldTimerManager().SetTimer(H0, FTimerDelegate::CreateLambda([this]() { MenuNewGame(); }), 3.f, false);
+		FTimerHandle H1; GetWorldTimerManager().SetTimer(H1, FTimerDelegate::CreateLambda([this]() { SkipCinematic(); }), 10.f, false);
+		static const TCHAR* Ids[] = { TEXT("uaz469"), TEXT("bukhanka"), TEXT("niva"), TEXT("kamaz"), TEXT("water"), TEXT("btr") };
+		for (int32 i = 0; i < 6; i++)
+			for (int32 v = 0; v < 2; v++)
+			{
+				const float T = 14.f + i * 4.f + v * 2.f;
+				const FName Vid(Ids[i]);
+				FTimerHandle Ha; GetWorldTimerManager().SetTimer(Ha, FTimerDelegate::CreateLambda([this, Vid, v]()
+				{
+					Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true;
+					S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5;
+					for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == Vid) if (AKAPCharacter* P = Player())
+					{
+						const FVector C = V->Pawn->GetActorLocation();
+						const float D = (Vid == "kamaz" || Vid == "water" || Vid == "btr") ? 1.45f : 1.f;
+						const FVector Sd = C + V->Pawn->GetActorRightVector() * (v ? -390.f : 430.f) * D + V->Pawn->GetActorForwardVector() * (v ? -560.f : 560.f) * D;
+						P->SetActorLocation(FVector(Sd.X, Sd.Y, KAPVis::GroundZ(GetWorld(), Sd.X, Sd.Y, C.Z) + 110));
+						if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->SetControlRotation(FRotator(-9, (C - Sd).Rotation().Yaw, 0));
+					}
+				}), T, false);
+				FTimerHandle Hb; GetWorldTimerManager().SetTimer(Hb, FTimerDelegate::CreateLambda([Shot, Vid, v]() { Shot(Vid.ToString() + (v ? TEXT("_b") : TEXT("_a"))); }), T + 1.6f, false);
+			}
+		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 14.f + 6 * 4.f + 2.f, false);
+	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapautotest")))
 	{
 		struct FStep { float T; TFunction<void()> F; };
@@ -349,16 +378,24 @@ void AKAPGameMode::Radio(const FString& Msg, FName Kind)
 	Toast(TEXT("Радио: ") + Msg, Kind);
 	RadioLog.Add(KAP::FmtTime(S().Time) + TEXT("  ") + Msg);
 	if (RadioLog.Num() > 60) RadioLog.RemoveAt(0);
-	if (UKAPAudio* A = UKAPAudio::Get(this)) { A->SetRadio(1.f); bRadioPulse = true; A->RadioVoice(FMath::Clamp(Msg.Len() * 0.055f, 1.2f, 4.f), Msg.Len() % 3 == 0); }
+	if (UKAPAudio* A = UKAPAudio::Get(this)) { A->SetRadio(1.f); bRadioPulse = true; if (!A->Speak(Msg, FVector::ZeroVector, Msg.Len() % 3 == 0, 2)) A->RadioVoice(FMath::Clamp(Msg.Len() * 0.055f, 1.2f, 4.f), Msg.Len() % 3 == 0); }
 	FTimerHandle H;
 	GetWorldTimerManager().SetTimer(H, [this]() { if (UKAPAudio* A = UKAPAudio::Get(this)) A->SetRadio(0); }, 0.4f, false);
 }
 void AKAPGameMode::Toast(const FString& Msg, FName Kind) { if (AKAPHUD* H = AKAPHUD::Get(this)) H->AddToast(Msg, Kind); }
-void AKAPGameMode::Subtitle(const FString& Kk, const FString& Ru, const FString& Who, float Dur) { if (AKAPHUD* H = AKAPHUD::Get(this)) H->SetSubtitle(Kk, S().bRuSubtitles ? Ru : FString(), Who, Dur); }
+void AKAPGameMode::Subtitle(const FString& Kk, const FString& Ru, const FString& Who, float Dur)
+{
+	if (AKAPHUD* H = AKAPHUD::Get(this)) H->SetSubtitle(Kk, S().bRuSubtitles ? Ru : FString(), Who, Dur);
+	// ойыншы, диктор, рация, планшет — жазылған дауыспен (NPC өзі 3D айтады)
+	if (Who.IsEmpty() || Who == TEXT("Сіз") || Who == TEXT("Радио") || Who == TEXT("Ана") || Who == TEXT("Планшет"))
+		if (UKAPAudio* A = UKAPAudio::Get(this)) A->Speak(Kk, FVector::ZeroVector, Who == TEXT("Ана") || Who == TEXT("Планшет"), Who == TEXT("Радио") ? 2 : 1);
+}
 void AKAPGameMode::Dialog(const FString& Name, const FString& Text, TArray<FKAPDialogOption> Opts)
 {
 	if (Opts.Num() == 0) Opts.Add({ TEXT("Жабу"), nullptr, false });
 	if (AKAPHUD* H = AKAPHUD::Get(this)) H->ShowDialog(Name, Text, MoveTemp(Opts));
+	// сөйлесіп тұрған NPC-нің дауысы (жынысы бойынша)
+	if (UKAPAudio* A = UKAPAudio::Get(this)) { A->StopSpeech(); A->Speak(Text, FVector::ZeroVector, TalkNPC.IsValid() && TalkNPC->DisplayName == Name && TalkNPC->IsFemale(), 1); }
 }
 
 // =====================================================================
@@ -1219,6 +1256,7 @@ void AKAPGameMode::StoryTick(float Dt)
 // =====================================================================
 void AKAPGameMode::Talk(AKAPNPC* N)
 {
+	TalkNPC = N;
 	FKAPSession& Ss = S();
 	const int32 Day = FMath::FloorToInt32(Ss.Time / 24.0);
 	auto PartsGift = [this, Day, &Ss](FName Who) -> FKAPDialogOption

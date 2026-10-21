@@ -471,6 +471,8 @@ void AKAPNPC::Kill(bool bByPlayer)
 {
 	if (bDead) return;
 	bDead = true; DeadT = 0;
+	// адамның өлім айқайы (әйелге — жоғарырақ)
+	if (IsHuman()) if (UKAPAudio* A = UKAPAudio::Get(this)) if (!A->PlayBank("Scream", GetActorLocation() + FVector(0, 0, 60), 1.f, bFemale ? 1.3f : FMath::FRandRange(0.92f, 1.04f))) A->Creature(GetActorLocation() + FVector(0, 0, 60), 1, 0.6f);
 	GetCharacterMovement()->DisableMovement();
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (IsHuman())
@@ -594,7 +596,7 @@ void AKAPNPC::Shoot(AActor* T, float DistM)
 	if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Flash, GetActorLocation() + Dir * 80 + FVector(0, 0, 50), 0.8f);
 	AKAPCharacter* PC = AKAPCharacter::Get(this);
 	const float DPl = FVector::Dist(GetActorLocation(), PC->GetActorLocation()) / 100.f;
-	if (DPl < 160) UKAPAudio::Get(this)->Play(EKAPSound::ShotFar, FMath::Clamp(1.f - DPl / 160.f, 0.1f, 0.9f));
+	if (DPl < 160) if (UKAPAudio* A = UKAPAudio::Get(this)) { if (A->HasBank("GunAK")) A->ShotAt(Faction == EKAPFaction::Bandit && (GetUniqueID() % 3) == 0 ? FName("shotgun") : FName("ak"), GetActorLocation() + FVector(0, 0, 50)); else A->Play(EKAPSound::ShotFar, FMath::Clamp(1.f - DPl / 160.f, 0.1f, 0.9f)); }
 	PC->Noise = FMath::Max(PC->Noise, 0.4f);
 	const FKAPEnv* Env = AWeatherManager::Get(GetWorld()) ? &AWeatherManager::Get(GetWorld())->Env : nullptr;
 	float P = 0.55f * (1.f - DistM / (RangeM * 1.3f));
@@ -809,7 +811,7 @@ void AKAPNPC::Bark(float DistP)
 	BarkCd = 25.f + FMath::FRand() * 20.f;
 	const FString Line = L[FMath::RandRange(0, L.Num() - 1)];
 	GM->Subtitle(Line, FString(), DisplayName, 3.5f);
-	UKAPAudio::Get(this)->Voice(GetActorLocation() + FVector(0, 0, 60), FMath::Clamp(Line.Len() * 0.055f, 0.8f, 3.2f), bFemale, 0.9f, GetUniqueID() + (int32)Now);
+	if (UKAPAudio* A = UKAPAudio::Get(this)) if (!A->Speak(Line, GetActorLocation() + FVector(0, 0, 60), bFemale, 0, 1.f, FMath::FRandRange(0.95f, 1.05f))) A->Voice(GetActorLocation() + FVector(0, 0, 60), FMath::Clamp(Line.Len() * 0.055f, 0.8f, 3.2f), bFemale, 0.9f, GetUniqueID() + (int32)Now);
 	// сөйлегенде ойыншыға бұрылады
 	if (AKAPCharacter* P = AKAPCharacter::Get(this)) SetActorRotation(FRotator(0, (P->GetActorLocation() - GetActorLocation()).Rotation().Yaw, 0));
 }
@@ -827,7 +829,7 @@ void AKAPNPC::SoundTick(float Dt, float DistP)
 		static const TCHAR* Sh[] = { TEXT("Ей, инженер! Тоқта!"), TEXT("Бөлшектерді бер, тірі қаласың!"), TEXT("Жігіттер, мұнда!") };
 		const FString Line = Sh[FMath::RandRange(0, 2)];
 		if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Subtitle(Line, FString(), DisplayName, 3.f);
-		A->Voice(GetActorLocation() + FVector(0, 0, 60), 1.2f, false, 1.2f);
+		if (!A->Speak(Line, GetActorLocation() + FVector(0, 0, 60), false, 0, 1.3f, 0.97f)) A->Voice(GetActorLocation() + FVector(0, 0, 60), 1.2f, false, 1.2f);
 	}
 	// монстр дауыстары: ыңырсу, ырыл; ойыншыны алғаш көргенде — шыңғырық + стингер
 	if (Faction == EKAPFaction::Monster && Kind != ENPCKind::Worm)
@@ -854,7 +856,7 @@ void AKAPNPC::SoundTick(float Dt, float DistP)
 	{
 		StepAcc += V * Dt;
 		const float Stride = Kind == ENPCKind::Wolf ? 45.f : 75.f;
-		if (StepAcc > Stride) { StepAcc = 0; A->PlayAt(EKAPSound::Footstep, GetActorLocation() - FVector(0, 0, 80), Kind == ENPCKind::Wolf ? 0.25f : 0.35f); }
+		if (StepAcc > Stride) { StepAcc = 0; A->Footstep(GetActorLocation() - FVector(0, 0, 80), Kind == ENPCKind::Wolf ? 4 : 0, Kind == ENPCKind::Wolf ? 0.3f : 0.45f); }
 	}
 }
 

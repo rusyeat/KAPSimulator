@@ -49,4 +49,6 @@ namespace KAPVis
 	KAPSIMULATOR_API UStaticMeshComponent* Add(AActor* Owner, USceneComponent* Parent, EKAPShape S, FVector Pos, FVector Size, const FKAPMat& M, FRotator Rot = FRotator::ZeroRotator, bool bCollision = true);
 	/** Жер биіктігі (ландшафт бойынша сызық) — см */
 	KAPSIMULATOR_API float GroundZ(const UWorld* World, float X, float Y, float Fallback = 0.f);
+	/** Дайын мешті қосу (масштаб — тікелей көбейткіш), материал FKAPMat бойынша */
+	KAPSIMULATOR_API UStaticMeshComponent* AddMesh(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, FVector Pos, FVector Scale, const FKAPMat& M, FRotator Rot = FRotator::ZeroRotator, bool bCollision = false);
 }

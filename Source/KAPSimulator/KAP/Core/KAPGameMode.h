@@ -129,6 +129,8 @@ public:
 	UPROPERTY() TObjectPtr<AKAPWorldBuilder> Builder;
 	UPROPERTY() TObjectPtr<AWeatherManager> Weather;
 	TMap<FName, TWeakObjectPtr<AKAPNPC>> NamedNPC;
+	/** Соңғы сөйлескен NPC (диалог дауысының жынысы үшін) */
+	TWeakObjectPtr<AKAPNPC> TalkNPC;
 	TArray<FString> RadioLog;
 private:
 	void StartSession(bool bLoad);

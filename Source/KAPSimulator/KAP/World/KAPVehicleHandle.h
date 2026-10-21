@@ -42,6 +42,12 @@ public:
 private:
 	/** Шаблон көлігінің рамасын жасырып, нақты дөңгелек орындарына сай корпус құрастыру (KAPVehicleBody.cpp) */
 	void BuildBody();
+	/** Тегіс корпус мештері (SM_KAP_Veh_*) болса — солармен құрастыру (KAPVehicleShell.cpp); болмаса false */
+	bool BuildShellBody(USkeletalMeshComponent* M, float Xf, float Xr, float Yw, float Zc, float R);
+	/** Тегіс корпустың қосымша дөңгелектері (тұтас бөлшекті пивоттар) */
+	UPROPERTY() TArray<TObjectPtr<USceneComponent>> FakePivots;
+	/** Көрінетін база: дөңгелектер X бойынша VisXc айналасында VisKX есе жақындатылады */
+	float VisKX = 1.f, VisXc = 0.f;
 	bool bBodyBuilt = false;
 	FVector HeadLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
 	FVector TailLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };

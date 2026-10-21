@@ -23,6 +23,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateInvisibleMaterial();
 	/** Жиегі қырланған текше мен тегіс цилиндр */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateBevelMeshes();
+	/** Көлік корпустары (SDF → тегіс Nanite мештер), шина мен диск */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateVehicleMeshes();
 	/** Шөлейт v2: құм толқындары, ойпаңдар */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateLandscapeMaterial2();
 	/** Шынайы құм v4: аралас асимметриялы толқындар, түйіршік, жылтыр */

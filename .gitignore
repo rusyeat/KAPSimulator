@@ -14,3 +14,6 @@ DerivedDataCache/
 *.xcworkspace
 Plugins/*/Binaries/
 Plugins/*/Intermediate/
+
+# Жүктелген шикі дыбыстар мен TTS WAV (ойынға Content/KAP/Audio ретінде импортталған)
+External/
