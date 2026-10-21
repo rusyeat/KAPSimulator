@@ -47,8 +47,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "KAP/Core/KAPRegistry.h"
 
-static const FLinearColor Amber(0.95f, 0.76f, 0.3f), Panel(0.07f, 0.06f, 0.045f, 0.8f), Muted(0.55f, 0.51f, 0.44f), Txtc(0.94f, 0.9f, 0.82f);
-static const FLinearColor CGreen(0.37f, 0.83f, 0.54f), CRed(1.f, 0.35f, 0.29f), CYel(1.f, 0.82f, 0.29f), COrange(1.f, 0.54f, 0.23f), CBlue(0.44f, 0.71f, 1.f);
+#include "KAPUIColors.h"
 static FLinearColor StateCol(EWellState S) { return S == EWellState::Ok ? CGreen : S == EWellState::Fault ? CYel : S == EWellState::Leak ? COrange : S == EWellState::Fire ? CRed : FLinearColor(0.4f, 0.4f, 0.4f); }
 
 static FSlateFontInfo KFont(float PixelSize)

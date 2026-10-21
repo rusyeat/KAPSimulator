@@ -74,6 +74,39 @@ public static class KAPAudioTool
         }
     }
 
+    // ---- көп арналы (стерео) 16-бит WAV ----
+    public static void WriteMulti(string path, float[][] ch, int rate)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        int nc = ch.Length, n = ch[0].Length;
+        using (var w = new BinaryWriter(File.Create(path)))
+        {
+            w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF")); w.Write(36 + n * 2 * nc);
+            w.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt ")); w.Write(16); w.Write((short)1); w.Write((short)nc);
+            w.Write(rate); w.Write(rate * 2 * nc); w.Write((short)(2 * nc)); w.Write((short)16);
+            w.Write(System.Text.Encoding.ASCII.GetBytes("data")); w.Write(n * 2 * nc);
+            for (int i = 0; i < n; i++) for (int c = 0; c < nc; c++) { float v = Math.Max(-1f, Math.Min(1f, ch[c][i])); w.Write((short)Math.Round(v * 32767f)); }
+        }
+    }
+
+    // ---- стерео тұйық цикл: соңғы Xf үлгі басымен тең қуатты араласады (барлық арнаға бірдей) ----
+    public static float[][] LoopMulti(float[][] ch, int xf)
+    {
+        int nc = ch.Length, len = ch[0].Length - xf;
+        float[][] o = new float[nc][];
+        for (int c = 0; c < nc; c++)
+        {
+            o[c] = new float[len];
+            Array.Copy(ch[c], 0, o[c], 0, len);
+            for (int i = 0; i < xf; i++)
+            {
+                double t = (double)i / xf;
+                o[c][i] = ch[c][i] * (float)Math.Sin(t * Math.PI / 2) + ch[c][len + i] * (float)Math.Cos(t * Math.PI / 2);
+            }
+        }
+        return o;
+    }
+
     // ---- RMS қабықшасы (Win сек терезе) ----
     public static float[] Envelope(float[] x, int rate, float win)
     {

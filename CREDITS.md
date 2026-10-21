@@ -31,6 +31,14 @@
 | shooting_1 (firing a rifle outdoors) | mchrpt | https://freesound.org/s/660978/ | `GunRifle_*` (снайпер, алыстағы атыс) |
 | Geiger Counter Hotspot (Sweeping) | cookies+policy | https://freesound.org/s/555934/ | дозиметр шертпелері (`KAPGeigerClicks.inl`) |
 
+## Музыка
+
+| Трек | Авторы | Ойында |
+|---|---|---|
+| «Бос үміт» (KazAtomProm_Bos_Umit_FL_Menu) | жоба авторы (ChatGPT + FL Studio көмегімен) | `Menu_0` — басты мәзір (тұйық цикл) |
+
+Мылтық жазбалары (Vincent Sevedge, CC-BY 3.0) жеке атыстарға кесілген: `GunPM_0…3`, `GunAK_0…13`, `GunSniper_0…4`, `GunShotgun_0`.
+
 ## Дауыстар (TTS)
 
 Кейіпкерлердің сөздері Windows-тың кіріктірілген сөйлеу синтезімен (Microsoft Pavel — ер, Microsoft Irina — әйел, ru-RU)

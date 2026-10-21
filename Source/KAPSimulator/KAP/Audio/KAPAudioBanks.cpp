@@ -9,6 +9,7 @@
 #include "Misc/ScopeExit.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
+#include "Sound/SoundConcurrency.h"
 
 uint32 UKAPAudio::VoHash(const FString& S)
 {
@@ -45,8 +46,39 @@ UAudioComponent* UKAPAudio::PlayBank(FName Bank, FVector Loc, float Vol, float P
 {
 	USoundWave* W = Pick(Bank);
 	if (!W || !GetWorld()) return nullptr;
-	if (b2D) return UGameplayStatics::SpawnSound2D(GetWorld(), W, Vol, Pitch, StartTime);
-	return UGameplayStatics::SpawnSoundAtLocation(GetWorld(), W, Loc, FRotator::ZeroRotator, Vol, Pitch, StartTime, bFar ? AttenFar() : Atten());
+	// мылтық: бір уақытта ең көбі 6 атыс дыбысы, артығы — ең ескісі қысқа сөніп тоқтайды (автомат кезегінде жаңғырық үйілмейді)
+	USoundConcurrency* Conc = nullptr;
+	if (Bank.ToString().StartsWith(TEXT("Gun")))
+	{
+		if (!GunConc)
+		{
+			GunConc = NewObject<USoundConcurrency>(this);
+			GunConc->Concurrency.MaxCount = 6;
+			GunConc->Concurrency.ResolutionRule = EMaxConcurrentResolutionRule::StopOldest;
+			GunConc->Concurrency.VoiceStealReleaseTime = 0.06f;
+		}
+		Conc = GunConc;
+	}
+	if (b2D) return UGameplayStatics::SpawnSound2D(GetWorld(), W, Vol, Pitch, StartTime, Conc);
+	return UGameplayStatics::SpawnSoundAtLocation(GetWorld(), W, Loc, FRotator::ZeroRotator, Vol, Pitch, StartTime, bFar ? AttenFar() : Atten(), Conc);
+}
+
+void UKAPAudio::SetMenuMusic(bool bOn)
+{
+	if (!GetWorld()) return;
+	if (bOn)
+	{
+		if (MusMenu && MusMenu->IsPlaying()) return;
+		USoundWave* W = Pick("Menu");
+		if (!W) return;
+		MusMenu = UGameplayStatics::CreateSound2D(GetWorld(), W, 0.55f, 1.f, 0.f, nullptr, true, false);
+		if (MusMenu) MusMenu->FadeIn(2.f, 0.55f);
+	}
+	else if (MusMenu)
+	{
+		MusMenu->FadeOut(2.5f, 0.f);
+		MusMenu = nullptr;
+	}
 }
 
 bool UKAPAudio::Speak(const FString& Text, FVector Loc, bool bFemale, int32 Mode, float Vol, float Pitch)

@@ -120,7 +120,7 @@ void AKAPGameMode::BeginPlay()
 	FKAPSession& Ss = S();
 	Ss.Time = 21.8;
 	Weather->UpdateEnv(Ss, 0.016f, 0);
-	if (bInMenu) SetupMenuScene();
+	if (bInMenu) { SetupMenuScene(); if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->SetMenuMusic(true); }
 	// Автоматты тексеру: -kapautotest (скриншоттар Saved/Screenshots ішіне)
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapsounddump"))) { FTimerHandle Hd; GetWorldTimerManager().SetTimer(Hd, FTimerDelegate::CreateLambda([this]() { UKAPAudio::Get(this)->DumpAll(); FGenericPlatformMisc::RequestExit(false); }), 2.f, false); }
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvehshots")))
@@ -456,6 +456,7 @@ void AKAPGameMode::StartSession(bool bLoad)
 {
 	bInMenu = false; bEnded = false; bPlayerDead = false;
 	ClearMenuScene();
+	if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->SetMenuMusic(false);
 	UKAPGameInstance* GI = UKAPGameInstance::Get(this);
 	UWellManagerSubsystem* WM = GetWorld()->GetSubsystem<UWellManagerSubsystem>();
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);

@@ -30,12 +30,12 @@
 
 namespace
 {
-	const FLinearColor Amber(0.95f, 0.76f, 0.3f), Muted(0.55f, 0.51f, 0.44f), Txtc(0.94f, 0.9f, 0.82f);
-	const FLinearColor CGreen(0.37f, 0.83f, 0.54f), CRed(1.f, 0.35f, 0.29f), CBlue(0.44f, 0.71f, 1.f), COrange(1.f, 0.54f, 0.23f), CYel(1.f, 0.82f, 0.29f);
+	const FLinearColor MAmber(0.95f, 0.76f, 0.3f), MMuted(0.55f, 0.51f, 0.44f), MTxtc(0.94f, 0.9f, 0.82f);
+	const FLinearColor MCGreen(0.37f, 0.83f, 0.54f), MCRed(1.f, 0.35f, 0.29f), MCBlue(0.44f, 0.71f, 1.f), MCOrange(1.f, 0.54f, 0.23f), MCYel(1.f, 0.82f, 0.29f);
 	enum EIcon : int32 { IWell, IVillage, IPolice, IShop, IArmy, IWagon, ITower, IHQ, IWater, IBandit, INest, IRuins, ICar, IJob, IWreck, IGuard, INum };
 	// қабаттар (шартты белгілер тізімінде қосып/өшіріледі)
 	enum ELayer : int32 { LWells, LPlaces, LServices, LArmy, LShelter, LTowers, LJobs, LCars, LDanger, LNum };
-	FLinearColor WellCol(EWellState S) { return S == EWellState::Ok ? CGreen : S == EWellState::Fault ? CYel : S == EWellState::Leak ? COrange : S == EWellState::Fire ? CRed : FLinearColor(0.45f, 0.45f, 0.45f); }
+	FLinearColor WellCol(EWellState S) { return S == EWellState::Ok ? MCGreen : S == EWellState::Fault ? MCYel : S == EWellState::Leak ? MCOrange : S == EWellState::Fire ? MCRed : FLinearColor(0.45f, 0.45f, 0.45f); }
 	const TCHAR* WellName(EWellState S) { return S == EWellState::Ok ? TEXT("Жұмыс істеп тұр") : S == EWellState::Fault ? TEXT("Ақау бар — жөндеу керек") : S == EWellState::Leak ? TEXT("Ағып жатыр! Жұмысшылар сәулеленуде") : S == EWellState::Fire ? TEXT("ӨРТ!") : TEXT("Жоғалған"); }
 	struct FPt { FVector2D P; int32 Icon; FLinearColor Col; FString Title, Info, Num; int32 Layer; bool bLabel; };
 }
@@ -404,7 +404,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 	if (Nav && Nav->bHasTarget)
 	{
 		// балама маршруттар — жіңішке, белсендісі — жарқыраған жасыл
-		const FLinearColor RC[3] = { FLinearColor(0.3f, 0.88f, 0.54f), CBlue, CYel };
+		const FLinearColor RC[3] = { FLinearColor(0.3f, 0.88f, 0.54f), MCBlue, MCYel };
 		for (int32 m = 0; m < 3; m++)
 		{
 			const KAPAI::FRoute& R = Nav->Routes[m];
@@ -440,7 +440,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		else if (T == "ruins") { Pt.Icon = IRuins; Pt.Col = FLinearColor(0.5f, 0.35f, 0.3f); Pt.Info = TEXT("Қираған ауыл · тірі қалғандар болуы мүмкін"); Pt.bLabel = true; }
 		else if (T == "wreck") { Pt.Icon = IWreck; Pt.Col = FLinearColor(0.45f, 0.42f, 0.38f); Pt.Info = TEXT("Ескі көлік қаңқасы · бөлшектер"); }
 		else if (T == "guardpost") { Pt.Icon = IGuard; Pt.Col = FLinearColor(0.2f, 0.3f, 0.5f); Pt.Info = TEXT("Кеніш күзеті · Бекзат — қару рұқсаты"); Pt.Layer = LServices; }
-		else if (T == "missing") { if (GM->QuestState("s_missing") != EQuestState::Active || S.Flags.Contains("missingFound")) return; Pt.Icon = IJob; Pt.Col = CYel; Pt.Info = TEXT("Жоғалған жұмысшы осы маңда"); Pt.Layer = LJobs; }
+		else if (T == "missing") { if (GM->QuestState("s_missing") != EQuestState::Active || S.Flags.Contains("missingFound")) return; Pt.Icon = IJob; Pt.Col = MCYel; Pt.Info = TEXT("Жоғалған жұмысшы осы маңда"); Pt.Layer = LJobs; }
 		if (Pt.Icon >= 0) Pts.Add(Pt);
 	});
 	for (int32 i = 0; i < WM->Wells.Num() && i < S.Wells.Num(); i++)
@@ -476,7 +476,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		if (C.Type == "scrap") Ps = C.Points; else Ps.Add(C.Points[C.Type == "patrol" ? FMath::Clamp(C.Have, 0, C.Points.Num() - 1) : 0]);
 		for (const FVector2D& Wp : Ps)
 		{
-			FPt Pt; Pt.P = Wp; Pt.Icon = IJob; Pt.Col = S.Tracked == C.Uid ? CYel : FLinearColor(0.95f, 0.6f, 0.2f); Pt.Layer = LJobs; Pt.bLabel = false;
+			FPt Pt; Pt.P = Wp; Pt.Icon = IJob; Pt.Col = S.Tracked == C.Uid ? MCYel : FLinearColor(0.95f, 0.6f, 0.2f); Pt.Layer = LJobs; Pt.bLabel = false;
 			Pt.Title = C.Title; Pt.Info = GM->ContractProgress(C) + FString::Printf(TEXT(" · %d ₸"), C.Reward);
 			Pts.Add(Pt);
 		}
@@ -522,7 +522,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		if (!S.Regions[r])
 		{
 			Rect(Ax, Ay, Bx - Ax, By - Ay, FLinearColor(0.03f, 0.03f, 0.035f, 0.78f));
-			if (In(Cc)) { Txt(Cc.X, Cc.Y - 22, KAP::RegionName(r).ToString(), 22, Muted, 1); Txt(Cc.X, Cc.Y + 8, r == 0 ? TEXT("ашылмаған · алдымен «Буханка» радиаторын жөндеңіз") : TEXT("ашылмаған · сигнал мұнарасын қосыңыз"), 14, Muted, 1); }
+			if (In(Cc)) { Txt(Cc.X, Cc.Y - 22, KAP::RegionName(r).ToString(), 22, MMuted, 1); Txt(Cc.X, Cc.Y + 8, r == 0 ? TEXT("ашылмаған · алдымен «Буханка» радиаторын жөндеңіз") : TEXT("ашылмаған · сигнал мұнарасын қосыңыз"), 14, MMuted, 1); }
 		}
 		else if (In(Cc) && MapZoom < 2.6f)
 		{
@@ -568,9 +568,9 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		if (Tx + Tw > X + W) Tx = Sp.X - Ir - 10 - Tw;
 		Ty = FMath::Clamp(Ty, Y + 4, Y + H - 80);
 		Rect(Tx, Ty, Tw, 72, FLinearColor(0.04f, 0.04f, 0.045f, 0.92f)); Rect(Tx, Ty, 4, 72, Pt.Col);
-		Txt(Tx + 14, Ty + 7, Pt.Title, 17, Txtc);
+		Txt(Tx + 14, Ty + 7, Pt.Title, 17, MTxtc);
 		Txt(Tx + 14, Ty + 32, Pt.Info, 13, FLinearColor(0.8f, 0.77f, 0.7f));
-		Txt(Tx + 14, Ty + 51, Dist, 12, Muted);
+		Txt(Tx + 14, Ty + 51, Dist, 12, MMuted);
 	}
 	// ---- масштаб сызғышы, солтүстік ----
 	{
@@ -582,7 +582,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		Txt(Bx + Lp + 8, By - 9, L >= 1000 ? TEXT("1 км") : FString::Printf(TEXT("%d м"), L), 13, FLinearColor::White);
 		const FVector2D Nc(X + W - 34, Y + 34);
 		Disc(Nc, 20, FLinearColor(0, 0, 0, 0.45f));
-		FillTri(Nc + FVector2D(0, -16), Nc + FVector2D(6, 2), Nc + FVector2D(-6, 2), CRed);
+		FillTri(Nc + FVector2D(0, -16), Nc + FVector2D(6, 2), Nc + FVector2D(-6, 2), MCRed);
 		FillTri(Nc + FVector2D(0, 16), Nc + FVector2D(-6, -2), Nc + FVector2D(6, -2), FLinearColor(0.9f, 0.9f, 0.9f));
 		Txt(Nc.X, Nc.Y - 40, TEXT("С"), 13, FLinearColor::White, 1);
 	}
@@ -605,21 +605,21 @@ void AKAPHUD::DrawFullMap()
 	const float VW = Canvas->ClipX / Sc;
 	Rect(0, 0, VW, 1080, FLinearColor(0.025f, 0.025f, 0.03f, 0.97f));
 	const float PanelW = 360, X = 30, Y = 84, W = VW - PanelW - 70, H = 1080 - Y - 40;
-	Txt(X, 22, TEXT("КАРТА"), 30, Amber);
-	Txt(X + 140, 32, TEXT("QazUran кен аймағы · 2,4 × 2,4 км"), 16, Muted);
-	Txt(VW - 30, 30, TEXT("Дөңгелек — масштаб · сүйреу — жылжыту · басу — белгі · ОТБ — белгіні алу · M — жабу"), 13, Muted, 2);
+	Txt(X, 22, TEXT("КАРТА"), 30, MAmber);
+	Txt(X + 140, 32, TEXT("QazUran кен аймағы · 2,4 × 2,4 км"), 16, MMuted);
+	Txt(VW - 30, 30, TEXT("Дөңгелек — масштаб · сүйреу — жылжыту · басу — белгі · ОТБ — белгіні алу · M — жабу"), 13, MMuted, 2);
 	DrawWorldMap(X, Y, W, H, true);
 	// ---- оң жақ: шартты белгілер (басып қосу/өшіру) ----
 	const float Px = VW - PanelW - 30;
 	float Py = Y;
 	Rect(Px, Y, PanelW, H, FLinearColor(0.06f, 0.06f, 0.065f, 0.95f));
-	Txt(Px + 20, Py + 14, TEXT("Шартты белгілер"), 19, Txtc); Py += 52;
+	Txt(Px + 20, Py + 14, TEXT("Шартты белгілер"), 19, MTxtc); Py += 52;
 	struct FLeg { int32 Layer; int32 Icon; FLinearColor Col; const TCHAR* Name; };
 	static const FLeg Legs[] = {
-		{ LWells, IWell, CGreen, TEXT("Ұңғымалар (түсі — күйі)") }, { LPlaces, IVillage, FLinearColor(0.85f, 0.55f, 0.12f), TEXT("Елді мекендер, басқарма") },
+		{ LWells, IWell, MCGreen, TEXT("Ұңғымалар (түсі — күйі)") }, { LPlaces, IVillage, FLinearColor(0.85f, 0.55f, 0.12f), TEXT("Елді мекендер, басқарма") },
 		{ LServices, IPolice, FLinearColor(0.12f, 0.32f, 0.85f), TEXT("Полиция, дүкен, күзет") }, { LArmy, IArmy, FLinearColor(0.3f, 0.36f, 0.16f), TEXT("Әскери аймақ") },
 		{ LShelter, IWagon, FLinearColor(0.2f, 0.62f, 0.35f), TEXT("Баспаналар (вагон-үй)") }, { LTowers, ITower, FLinearColor(0.45f, 0.45f, 0.45f), TEXT("Сигнал мұнаралары") },
-		{ LJobs, IJob, CYel, TEXT("Белсенді жұмыстар") }, { LCars, ICar, FLinearColor(0.25f, 0.3f, 0.35f), TEXT("Көліктер") },
+		{ LJobs, IJob, MCYel, TEXT("Белсенді жұмыстар") }, { LCars, ICar, FLinearColor(0.25f, 0.3f, 0.35f), TEXT("Көліктер") },
 		{ LDanger, INest, FLinearColor(0.55f, 0.05f, 0.05f), TEXT("Қауіп: ұя, бандит, радиация") },
 	};
 	for (const FLeg& L : Legs)
@@ -629,9 +629,9 @@ void AKAPHUD::DrawFullMap()
 		if (bHov) Rect(Px + 10, Py - 6, PanelW - 20, 36, FLinearColor(1, 1, 1, 0.05f));
 		UiA = bOn ? 1.f : 0.35f;
 		MapIcon(L.Icon, FVector2D(Px + 34, Py + 12), 10, L.Col, TEXT("1"), false);
-		Txt(Px + 58, Py + 2, L.Name, 15, Txtc);
+		Txt(Px + 58, Py + 2, L.Name, 15, MTxtc);
 		UiA = 1.f;
-		Txt(Px + PanelW - 22, Py + 2, bOn ? TEXT("✓") : TEXT("—"), 15, bOn ? CGreen : Muted, 2);
+		Txt(Px + PanelW - 22, Py + 2, bOn ? TEXT("✓") : TEXT("—"), 15, bOn ? MCGreen : MMuted, 2);
 		const int32 Ly = L.Layer;
 		Btns.Add({ FBox2D(FVector2D(Px + 10, Py - 6), FVector2D(Px + PanelW - 10, Py + 30)), [this, Ly]() { MapLayers ^= (1u << Ly); } });
 		Py += 40;
@@ -639,24 +639,24 @@ void AKAPHUD::DrawFullMap()
 	Py += 10;
 	Rect(Px + 20, Py, PanelW - 40, 1, FLinearColor(1, 1, 1, 0.12f)); Py += 16;
 	// ұңғыма күйлерінің түстері
-	Txt(Px + 20, Py, TEXT("Ұңғыма күйі"), 15, Txtc); Py += 26;
-	const TPair<FLinearColor, const TCHAR*> St[] = { { CGreen, TEXT("жұмыс істейді") }, { CYel, TEXT("ақау") }, { COrange, TEXT("ағу") }, { CRed, TEXT("өрт") } };
+	Txt(Px + 20, Py, TEXT("Ұңғыма күйі"), 15, MTxtc); Py += 26;
+	const TPair<FLinearColor, const TCHAR*> St[] = { { MCGreen, TEXT("жұмыс істейді") }, { MCYel, TEXT("ақау") }, { MCOrange, TEXT("ағу") }, { MCRed, TEXT("өрт") } };
 	float Sx = Px + 20;
-	for (const auto& Sv : St) { Disc(FVector2D(Sx + 7, Py + 9), 7, Sv.Key); Txt(Sx + 20, Py, Sv.Value, 13, Muted); Sx += 20 + Measure(Sv.Value, 13).X + 16; }
+	for (const auto& Sv : St) { Disc(FVector2D(Sx + 7, Py + 9), 7, Sv.Key); Txt(Sx + 20, Py, Sv.Value, 13, MMuted); Sx += 20 + Measure(Sv.Value, 13).X + 16; }
 	Py += 40;
 	// белгі (нысана)
 	UNavigatorComponent* Nav = P->Navigator;
-	Txt(Px + 20, Py, TEXT("Белгі"), 15, Txtc); Py += 26;
+	Txt(Px + 20, Py, TEXT("Белгі"), 15, MTxtc); Py += 26;
 	if (Nav && Nav->bHasTarget)
 	{
 		Para(Px + 20, Py, PanelW - 40, FString::Printf(TEXT("%s · ≈ %d м"), *Nav->TargetName, FMath::RoundToInt32(FVector2D::Distance(KAP::CM2M(P->GetActorLocation()), Nav->Target))), 14, FLinearColor(0.75f, 0.55f, 1.f));
 		Py += 30;
 		Button(Px + 20, Py, 150, 32, TEXT("Белгіні алу"), [Nav]() { Nav->Clear(); }, true, false, 14);
 	}
-	else { Para(Px + 20, Py, PanelW - 40, TEXT("Картадағы кез келген нүктені немесе белгішені басыңыз — навигатор жол салады."), 13, Muted); Py += 20; }
+	else { Para(Px + 20, Py, PanelW - 40, TEXT("Картадағы кез келген нүктені немесе белгішені басыңыз — навигатор жол салады."), 13, MMuted); Py += 20; }
 	Py += 56;
 	Button(Px + 20, Py, 100, 34, TEXT("+"), [this]() { MapZoom = FMath::Min(9.f, MapZoom * 1.4f); }, true, false, 18);
 	Button(Px + 128, Py, 100, 34, TEXT("−"), [this]() { MapZoom = FMath::Max(1.f, MapZoom / 1.4f); }, true, false, 18);
 	Button(Px + 236, Py, PanelW - 256, 34, TEXT("Мен"), [this, P]() { MapCenter = KAP::CM2M(P->GetActorLocation()); MapZoom = FMath::Max(MapZoom, 2.2f); }, true, false, 15);
-	Txt(Px + 20, Y + H - 34, FString::Printf(TEXT("Әмиян: %s"), *Money(GM->S().Money)), 15, CGreen);
+	Txt(Px + 20, Y + H - 34, FString::Printf(TEXT("Әмиян: %s"), *Money(GM->S().Money)), 15, MCGreen);
 }

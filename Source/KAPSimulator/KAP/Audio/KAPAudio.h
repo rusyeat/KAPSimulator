@@ -135,7 +135,12 @@ public:
 	/** Жоқтау әуені (финал); ұзақтығын (сек) қайтарады */
 	float Lament();
 	void StopLoops();
+	/** Басты мәзір музыкасы (Music/Menu_0, «Бос үміт»): қосу — 2 с баяу кіреді, өшіру — 2.5 с сөнеді */
+	void SetMenuMusic(bool bOn);
 private:
+	UPROPERTY() TObjectPtr<UAudioComponent> MusMenu;
+	/** Мылтық дыбыстарының бір уақыттағы шегі (ұзын жаңғырықтар үйіліп қалмасын) */
+	UPROPERTY() TObjectPtr<class USoundConcurrency> GunConc;
 	void PlayBuffer(const TArray<int16>& Pcm, float Vol);
 	UKAPSynthWave* MakeLoop(UAudioComponent*& OutComp, float Cutoff, float HighPass, float Tone);
 	UPROPERTY() TObjectPtr<UKAPSynthWave> Wind;

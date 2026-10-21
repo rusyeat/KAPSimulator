@@ -19,8 +19,10 @@ bool AKAPNPC::SetupSmoothHuman(ENPCKind InKind, float Scale)
 {
 	USkeletalMeshComponent* SK = GetMesh();
 	const TCHAR* Variant = InKind == ENPCKind::SickChild ? TEXT("SickBoy") : InKind == ENPCKind::Girl ? TEXT("Girl") : InKind == ENPCKind::Boy ? TEXT("Boy") : bFemale ? TEXT("AdultFemale") : TEXT("AdultMale");
-	const FString NewBodyPath = FString::Printf(TEXT("/Game/KAP/Characters/V3/SKM_KAP_V3_%s.SKM_KAP_V3_%s"), Variant, Variant);
-	USkeletalMesh* Body = LoadObject<USkeletalMesh>(nullptr, *NewBodyPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	// ересектер — V4 (MetaHuman басы, шынайы бет), балалар — V3; жоқ болса V3, одан кейін ескі дене
+	USkeletalMesh* Body = nullptr;
+	if (!IsChild()) Body = LoadObject<USkeletalMesh>(nullptr, *FString::Printf(TEXT("/Game/KAP/Characters/V4/SKM_KAP_V4_%s.SKM_KAP_V4_%s"), Variant, Variant), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Body) Body = LoadObject<USkeletalMesh>(nullptr, *FString::Printf(TEXT("/Game/KAP/Characters/V3/SKM_KAP_V3_%s.SKM_KAP_V3_%s"), Variant, Variant), nullptr, LOAD_NoWarn | LOAD_Quiet);
 	UMaterialInterface* HumM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Characters/V3/M_KAP_Human3.M_KAP_Human3"), nullptr, LOAD_NoWarn | LOAD_Quiet);
 	if (!Body || !HumM)
 	{

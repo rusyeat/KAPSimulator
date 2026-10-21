@@ -16,10 +16,9 @@
 #include "AudioDevice.h"
 #include "Kismet/KismetSystemLibrary.h"
 
+#include "KAPUIColors.h"
 namespace
 {
-	const FLinearColor Amber(0.95f, 0.76f, 0.3f), Panel(0.07f, 0.06f, 0.045f, 0.8f), Muted(0.55f, 0.51f, 0.44f), Txtc(0.94f, 0.9f, 0.82f);
-	const FLinearColor CGreen(0.37f, 0.83f, 0.54f), CRed(1.f, 0.35f, 0.29f), CBlue(0.44f, 0.71f, 1.f), COrange(1.f, 0.54f, 0.23f);
 	const FLinearColor Card(0.115f, 0.115f, 0.105f, 0.98f), Win(0.055f, 0.058f, 0.062f, 0.97f);
 	const FLinearColor CatCol[4] = { CRed, Amber, CGreen, CBlue };
 }

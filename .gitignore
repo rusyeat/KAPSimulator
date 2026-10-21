@@ -17,3 +17,9 @@ Plugins/*/Intermediate/
 
 # Жүктелген шикі дыбыстар мен TTS WAV (ойынға Content/KAP/Audio ретінде импортталған)
 External/
+
+# MetaHuman/Fab негізіндегі V4 кейіпкерлер — лицензия бойынша жария репоға жүктелмейді (тек жергілікті).
+# Ойын бұл файлдар жоқ болса V3 денелерін қолданады. Қайта жасау: Scripts/blender/build_v4_heads.py + Scripts/import_character_assets_v4.py
+Content/KAP/Characters/V4/
+SourceArt/CharactersV4/
+*.blend1
