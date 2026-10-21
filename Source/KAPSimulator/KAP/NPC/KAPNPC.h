@@ -54,6 +54,16 @@ public:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Tool;
 	bool HasLineOfSightTo(const AActor* Other) const;
 	void Kill(bool bByPlayer);
+	/** Келесі соққының серпіні (см/с, жылдамдық өзгерісі): оқ — тиген сүйекке, көлік — бүкіл денеге. Өлсе — рагдоллға беріледі */
+	void SetHitImpulse(const FVector& Imp, FName Bone, bool bWholeBody) { PendingImpulse = Imp; PendingBone = Bone; bImpulseWhole = bWholeBody; }
+	/** Көлік қағуы: жылдамдыққа қарай жарақат, лақтырылу; Instigator — жүргізуші ойыншы болса */
+	void HitByVehicle(const FVector& VehVel, float Damage, AActor* Causer, const FVector& VehPos);
+	/** Сюжет кейіпкері (диалогы бар) өлмейді — талып қалады, біраздан соң тұрады */
+	bool bKnockedOut = false;
+	float KOT = 0.f;
+	/** Соңғы жарақат уақыты (HUD денсаулық жолағы үшін) */
+	float HurtTime = -100.f;
+	float LastVehHitT = -100.f;
 	void Alert(FVector2D AtM, float Seconds);
 
 	ENPCKind Kind = ENPCKind::Villager;
@@ -112,4 +122,10 @@ private:
 	/** Өнімділік LOD: 0 — жақын (толық), 1 — орта, 2 — алыс (сирек), 3 — өте алыс (тоқтап тұрады) */
 	int8 LodTier = -1;
 	void UpdateLod(float DistP);
+	FVector PendingImpulse = FVector::ZeroVector;
+	FName PendingBone = NAME_None;
+	bool bImpulseWhole = false;
+	void GoRagdoll();
+	void Knockout();
+	void Recover();
 };

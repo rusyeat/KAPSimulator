@@ -323,7 +323,8 @@ void AKAPHUD::DrawGameplay(float Dt)
 	FadeTo(ABars, bAll || BarsT > 0.f || bBarsNeed, Dt);
 	FadeTo(AHot, bAll || HotT > 0.f, Dt);
 	FadeTo(AAmmo, bAll || AmmoT > 0.f || P->ReloadT > 0.f, Dt);
-	FadeTo(AMap, bAll, Dt);
+	// миникарта (GPS): Q ұстағанда, көлікте немесе навигатор белгісі бар кезде
+	FadeTo(AMap, bAll || GM->CurrentVehicle.IsValid() || (P->Navigator && P->Navigator->bHasTarget), Dt);
 	// экран эффектілері
 	if (P->HurtFlash > 0 || P->GetHp() < 25)
 	{
@@ -376,7 +377,33 @@ void AKAPHUD::DrawGameplay(float Dt)
 			const float Bearing = FMath::RadiansToDegrees(FMath::Atan2(Nx.X - Pm.X, -(Nx.Y - Pm.Y)));
 			const float Diff = FMath::Fmod(Bearing - Heading + 540.f, 360.f) - 180.f;
 			if (FMath::Abs(Diff) < 80) { const float X = Cx + Diff * 3.f; Disc(FVector2D(X, 22), 7, FLinearColor(0.3f, 0.88f, 0.54f)); }
-			Txt(Cx + W / 2 - 8, 25, FString::Printf(TEXT("%d м"), FMath::RoundToInt32(FVector2D::Distance(Pm, P->Navigator->Target))), 13, FLinearColor(0.3f, 0.88f, 0.54f), 2, false);
+			else { const float X = Cx + FMath::Sign(Diff) * (W / 2 - 14); Txt(X, 24, Diff > 0 ? TEXT(">") : TEXT("<"), 18, FLinearColor(0.3f, 0.88f, 0.54f), 1, false); }
+			// нысана атауы мен қашықтығы — компастың астында (бұрын сандардың үстіне түсетін)
+			const FString Tl = FString::Printf(TEXT("%s · %d м"), *P->Navigator->TargetName, FMath::RoundToInt32(FVector2D::Distance(Pm, P->Navigator->Target)));
+			const float Tw = Measure(Tl, 13).X + 20;
+			Rect(Cx - Tw / 2, 54, Tw, 22, Panel);
+			Txt(Cx, 57, Tl, 13, FLinearColor(0.3f, 0.88f, 0.54f), 1, false);
+		}
+	}
+	// әлемдегі белгі: нысана экранда көрінсе — ромб пен қашықтық (GTA-дағыдай)
+	if (P->Navigator && P->Navigator->bHasTarget && !bMap)
+	{
+		const FVector2D Tm = P->Navigator->Target;
+		const FVector Tw3(Tm.X * 100.0, Tm.Y * 100.0, KAPVis::GroundZ(GetWorld(), Tm.X * 100.f, Tm.Y * 100.f, P->GetActorLocation().Z) + 350.f);
+		FVector2D Sp;
+		if (APlayerController* PC = GetOwningPlayerController(); PC && PC->ProjectWorldLocationToScreen(Tw3, Sp, true))
+		{
+			Sp /= Sc;
+			const float Dm = FVector2D::Distance(KAP::CM2M(P->GetActorLocation()), Tm);
+			if (Sp.X > 40 && Sp.X < VW - 40 && Sp.Y > 90 && Sp.Y < 1000 && Dm > 15.f)
+			{
+				UiA = FMath::Clamp((Dm - 15.f) / 20.f, 0.f, 0.9f);
+				const FLinearColor Pur(0.62f, 0.2f, 0.95f);
+				FillTri(Sp + FVector2D(0, -12), Sp + FVector2D(9, 0), Sp + FVector2D(-9, 0), Pur);
+				FillTri(Sp + FVector2D(0, 12), Sp + FVector2D(-9, 0), Sp + FVector2D(9, 0), Pur);
+				Txt(Sp.X, Sp.Y + 15, Dm >= 1000 ? FString::Printf(TEXT("%.1f км"), Dm / 1000.f) : FString::Printf(TEXT("%d м"), FMath::RoundToInt32(Dm)), 13, FLinearColor::White, 1);
+				UiA = 1.f;
+			}
 		}
 	}
 	// көрсеткіштер (жарақат, шөл, шаршау, ыстық/суық, сәуле кезінде)
@@ -462,8 +489,48 @@ void AKAPHUD::DrawGameplay(float Dt)
 	UiA = AMap;
 	if (UiA > 0.01f) DrawMinimap(VW - 130, 960, 110);
 	UiA = 1.f;
+	DrawNPCHealth();
 	DrawMoney(Dt);
 	UiA = 1.f;
+}
+
+// Адамдардың денсаулық жолағы: жарақат алғаннан кейін 6 с немесе көздегенде (40 м дейін).
+// Қызыл — дұшпан, жасыл — бейбіт, сұр — талып жатыр
+void AKAPHUD::DrawNPCHealth()
+{
+	APlayerController* PC = GetOwningPlayerController();
+	AKAPCharacter* P = AKAPCharacter::Get(this);
+	if (!PC || !P || !GetWorld()) return;
+	const float Now = GetWorld()->GetTimeSeconds();
+	AKAPNPC* Aimed = nullptr;
+	{
+		FVector O; FRotator R; PC->GetPlayerViewPoint(O, R);
+		FHitResult H; FCollisionQueryParams Q(SCENE_QUERY_STAT(KAPAim), false, P);
+		if (GetWorld()->LineTraceSingleByChannel(H, O, O + R.Vector() * 4000.f, ECC_Visibility, Q)) Aimed = Cast<AKAPNPC>(H.GetActor());
+	}
+	for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It)
+	{
+		AKAPNPC* N = *It;
+		if (N->bDead) continue;
+		const float Since = Now - N->HurtTime;
+		const bool bHurt = Since < 6.f || N->bKnockedOut;
+		if (!bHurt && N != Aimed) continue;
+		const FVector Head = N->GetActorLocation() + FVector(0, 0, N->GetSimpleCollisionHalfHeight() + 30.f);
+		const float Dist = FVector::Dist(Head, P->GetActorLocation()) / 100.f;
+		if (Dist > 40.f) continue;
+		FVector2D Sp;
+		if (!PC->ProjectWorldLocationToScreen(Head, Sp, true)) continue;
+		Sp /= Sc;
+		const float Fd = (N == Aimed || N->bKnockedOut) ? 1.f : FMath::Clamp((6.f - Since) / 1.5f, 0.f, 1.f);
+		UiA = Fd * FMath::Clamp(1.2f - Dist / 40.f, 0.35f, 1.f);
+		const float W = 76.f, Hh = 6.f;
+		const float Frac = FMath::Clamp(N->Hp / FMath::Max(1.f, N->MaxHp), 0.f, 1.f);
+		const FLinearColor Col = N->bKnockedOut ? Muted : N->IsHostileToPlayer() ? CRed : CGreen;
+		Rect(Sp.X - W / 2 - 1, Sp.Y - 1, W + 2, Hh + 2, FLinearColor(0, 0, 0, 0.6f));
+		Rect(Sp.X - W / 2, Sp.Y, W * Frac, Hh, Col);
+		if (N == Aimed && !N->DisplayName.IsEmpty()) Txt(Sp.X, Sp.Y - 20, N->DisplayName, 13, Txtc, 1);
+		UiA = 1.f;
+	}
 }
 
 void AKAPHUD::DrawMinimap(float Cx, float Cy, float R)
@@ -501,13 +568,44 @@ void AKAPHUD::DrawMinimap(float Cx, float Cy, float R)
 			}
 		Txt(Cx, Cy + R - 22, TEXT("HMM қауіп картасы"), 10, COrange, 1);
 	}
+	// кесінді шеңберге қиып салу (бұрын екі ұшы да шеңбер ішінде болмаса — жол мен маршрут мүлде көрінбейтін)
+	auto Raw = [&](FVector2D W)
+	{
+		const FVector2D Dv = (W - Pm) * Scale;
+		const float A = -Yaw - UE_HALF_PI;
+		return FVector2D(Cx, Cy) + FVector2D(Dv.X * FMath::Cos(A) - Dv.Y * FMath::Sin(A), Dv.X * FMath::Sin(A) + Dv.Y * FMath::Cos(A));
+	};
+	auto SegC = [&](FVector2D Wa, FVector2D Wb, FLinearColor Col, float Th)
+	{
+		const FVector2D A = Raw(Wa) - FVector2D(Cx, Cy), B = Raw(Wb) - FVector2D(Cx, Cy), Dd = B - A;
+		const float Rr = R - 3.f;
+		const float a = Dd.SizeSquared(), b = 2.f * FVector2D::DotProduct(A, Dd), c = A.SizeSquared() - Rr * Rr;
+		if (a < 1e-4f) return;
+		const float Disc0 = b * b - 4.f * a * c;
+		if (Disc0 <= 0.f) return;
+		const float Sq = FMath::Sqrt(Disc0);
+		const float T0 = FMath::Max(0.f, (-b - Sq) / (2.f * a)), T1 = FMath::Min(1.f, (-b + Sq) / (2.f * a));
+		if (T0 >= T1) return;
+		Line(FVector2D(Cx, Cy) + A + Dd * T0, FVector2D(Cx, Cy) + A + Dd * T1, Col, Th);
+	};
 	for (const KAPAI::FRoadEdge& E : D->Graph.Edges)
 	{
-		TOptional<FVector2D> A = To(D->Graph.Nodes[E.A].Pos), B = To(D->Graph.Nodes[E.B].Pos);
-		if (A && B) Line(*A, *B, FLinearColor(0.63f, 0.51f, 0.35f, 0.9f), 2);
+		const bool bAsph = E.BaseDanger <= 0.1001;
+		SegC(D->Graph.Nodes[E.A].Pos, D->Graph.Nodes[E.B].Pos, bAsph ? FLinearColor(0.16f, 0.16f, 0.17f, 0.95f) : FLinearColor(0.63f, 0.51f, 0.35f, 0.9f), bAsph ? 3.5f : 2.f);
 	}
 	if (const KAPAI::FRoute* Rt = P->Navigator->Active())
-		for (int32 i = 1; i < Rt->Points.Num(); i++) { TOptional<FVector2D> A = To(Rt->Points[i - 1]), B = To(Rt->Points[i]); if (A && B) Line(*A, *B, FLinearColor(0.3f, 0.88f, 0.54f), 3); }
+	{
+		for (int32 i = 1; i < Rt->Points.Num(); i++) SegC(Rt->Points[i - 1], Rt->Points[i], FLinearColor(0.05f, 0.3f, 0.12f, 0.8f), 6.f);
+		for (int32 i = 1; i < Rt->Points.Num(); i++) SegC(Rt->Points[i - 1], Rt->Points[i], FLinearColor(0.35f, 1.f, 0.55f), 3.5f);
+	}
+	// нысана: ішінде — белгі, сыртында — шеңбер шетінде бағыт көрсеткіші
+	if (P->Navigator->bHasTarget)
+	{
+		const FVector2D Tp = Raw(P->Navigator->Target), Dv = Tp - FVector2D(Cx, Cy);
+		const FLinearColor Pur(0.62f, 0.2f, 0.95f);
+		if (Dv.Size() < R - 8) { Disc(Tp, 6, FLinearColor::White); Disc(Tp, 4.5f, Pur); }
+		else { const FVector2D Ed = FVector2D(Cx, Cy) + Dv.GetSafeNormal() * (R - 6); Disc(Ed, 7, FLinearColor::White); Disc(Ed, 5, Pur); }
+	}
 	for (int32 i = 0; i < WM->Wells.Num() && i < S.Wells.Num(); i++) if (TOptional<FVector2D> A = To(WM->Wells[i].PosM())) Disc(*A, 4, StateCol(S.Wells[i].State));
 	for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It)
 	{

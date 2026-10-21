@@ -377,7 +377,7 @@ void AKAPCharacter::DoFire()
 	if (!W || Cooldown > 0 || ReloadT > 0) return;
 	Cooldown = 1.f / FMath::Max(0.1f, W->Rate);
 	const FVector O = Camera->GetComponentLocation();
-	const FVector Dir = Camera->GetForwardVector();
+	const FVector Dir = GetViewRotation().Vector(); // (камера компоненті кадр ортасында көлденең болуы мүмкін — көздеу бағыты басқарудан алынады)
 	FCollisionQueryParams Q(SCENE_QUERY_STAT(KAPFire), false, this);
 	if (W->Kind == "melee")
 	{
@@ -386,7 +386,7 @@ void AKAPCharacter::DoFire()
 		SetAttr(UKAPSurvivalAttributeSet::GetStaminaAttribute(), GetStamina() - 4);
 		FHitResult H;
 		if (GetWorld()->SweepSingleByChannel(H, O, O + Dir * W->Range * 100.f, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeSphere(25.f), Q))
-			if (AKAPNPC* N = Cast<AKAPNPC>(H.GetActor())) { UGameplayStatics::ApplyDamage(N, W->Damage, GetController(), this, nullptr); UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.9f); }
+			if (AKAPNPC* N = Cast<AKAPNPC>(H.GetActor())) { N->SetHitImpulse(Dir * 700.f, FName("spine_03"), false); UGameplayStatics::ApplyDamage(N, W->Damage, GetController(), this, nullptr); UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.9f); }
 		// қабырға/металға тиді ме — беттің түріне қарай соққы дыбысы
 		FHitResult Hw;
 		if (!H.GetActor() && GetWorld()->LineTraceSingleByChannel(Hw, O, O + Dir * W->Range * 100.f, ECC_Visibility, Q))
@@ -429,6 +429,8 @@ void AKAPCharacter::DoFire()
 			if (AKAPNPC* N = Cast<AKAPNPC>(H.GetActor()))
 			{
 				const bool bHead = H.ImpactPoint.Z > N->GetActorLocation().Z + N->GetSimpleCollisionHalfHeight() * 0.7f && N->IsHuman();
+				// оқ серпіні: қарудың күшіне қарай (өлсе — дене оқ бағытымен құлайды)
+				N->SetHitImpulse(Dd * FMath::Clamp(W->Damage * 70.f, 800.f, 6000.f) * (W->Pellets > 1 ? 2.5f : 1.f), bHead ? FName("head") : FName("spine_03"), false);
 				UGameplayStatics::ApplyDamage(N, W->Damage * (bHead ? 2.2f : 1.f), GetController(), this, nullptr);
 				UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.8f);
 			}
@@ -507,7 +509,7 @@ void AKAPCharacter::UpdateInteraction()
 {
 	InteractText.Reset(); InteractTarget = nullptr;
 	if (bFrozen) return;
-	const FVector P = GetActorLocation(), F = Camera->GetForwardVector();
+	const FVector P = GetActorLocation(), F = GetViewRotation().Vector();
 	float Best = 1e9f;
 	for (KAPReg::TIter<AActor> It(GetWorld(), KAPReg::Interactables()); It; ++It)
 	{
@@ -561,7 +563,7 @@ void AKAPCharacter::UpdateHeld(float Dt)
 	const float Tm = GetWorld()->GetTimeSeconds();
 	CamBob = FMath::FInterpTo(CamBob, BobK, Dt, 6.f);
 	Camera->SetRelativeLocation(FVector(0, FMath::Sin(BobT * 0.5f) * 1.6f * CamBob + FMath::PerlinNoise1D(Tm * 1.3f) * 2.f * Storm, 72 + FMath::Abs(FMath::Sin(BobT * 0.5f)) * 3.f * CamBob));
-	Camera->SetRelativeRotation(FRotator(0, 0, FMath::Sin(BobT * 0.5f) * 0.5f * CamBob + FMath::PerlinNoise1D(Tm * 0.7f + 3.f) * 1.2f * Storm));
+	Camera->SetWorldRotation(GetViewRotation() + FRotator(0, 0, FMath::Sin(BobT * 0.5f) * 0.5f * CamBob + FMath::PerlinNoise1D(Tm * 0.7f + 3.f) * 1.2f * Storm));
 	if (Recoil > 0) AddControllerPitchInput(-Recoil * Dt * 2.f);
 }
 

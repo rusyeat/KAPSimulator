@@ -139,39 +139,104 @@ void AKAPStructure::Build(EStructType InType, FVector S, FLinearColor Color, int
 		break;
 	}
 	case EStructType::House:
+	case EStructType::Shop:
 	case EStructType::Ruin:
 	{
 		const bool bRuin = Type == EStructType::Ruin;
+		const bool bShop = Type == EStructType::Shop;
 		const float W = S.X, D = S.Y, H = 320;
 		FKAPMat M = bRuin ? FKAPMat::Concrete(FLinearColor(0.16f, 0.14f, 0.12f)) : FKAPMat::Concrete(Color * 1.1f);
 		if (bRuin) M.Rust = 0.f;
 		if (!bRuin)
 		{
-			Box(FVector(0, 0, H / 2), FVector(W, D, H), M);
-			Box(FVector(0, 0, H + 12), FVector(W + 40, D + 40, 25), FKAPMat::Sheet(FLinearColor(0.3f, 0.26f, 0.22f), 0.55f));
-			Box(FVector(0, 0, H + 30), FVector(W * 0.6f, D * 0.6f, 12), FKAPMat::Sheet(FLinearColor(0.28f, 0.25f, 0.21f), 0.6f));
-			// есік: жақтау + ағаш полотно + баспалдақ
-			Box(FVector(0, D / 2 + 3, 100), FVector(100, 6, 200), Wood, FRotator::ZeroRotator, false);
-			Box(FVector(0, D / 2 + 6, 205), FVector(116, 8, 10), Frame, FRotator::ZeroRotator, false);
-			for (float X : { -54.f, 54.f }) Box(FVector(X, D / 2 + 6, 102), FVector(8, 8, 206), Frame, FRotator::ZeroRotator, false);
-			Box(FVector(0, D / 2 + 40, 8), FVector(140, 70, 16), FKAPMat::Concrete());
-			// терезелер: әйнек, жақтау, темір тор, жапқыштар
-			for (float Sx : { -1.f, 1.f })
+			// Ауыл үйі: сыланған/ақталған қабырға, қоңыр цоколь, қос беткейлі гофр шатыр (жотасы ұзын қабырға бойымен,
+			// маңдайша үшбұрыштары қабырға түстес), көк/ақ жақтаулы терезелер, есік алдында бетон баспалдақ пен күнқағар.
+			// bBright = ауласы бар (штакетник қоршау, қақпа, сарай) — ауыл үйлеріне
+			static const FLinearColor RoofCols[6] = { FLinearColor(0.12f, 0.24f, 0.36f), FLinearColor(0.16f, 0.27f, 0.18f), FLinearColor(0.34f, 0.13f, 0.08f), FLinearColor(0.42f, 0.43f, 0.44f), FLinearColor(0.1f, 0.3f, 0.32f), FLinearColor(0.3f, 0.29f, 0.27f) };
+			static const FLinearColor TrimCols[4] = { FLinearColor(0.08f, 0.22f, 0.5f), FLinearColor(0.82f, 0.82f, 0.78f), FLinearColor(0.1f, 0.35f, 0.3f), FLinearColor(0.45f, 0.18f, 0.08f) };
+			RoofColor = RoofCols[R.RandRange(0, 5)];
+			const FLinearColor Trim = TrimCols[R.RandRange(0, 3)];
+			FKAPMat Plaster = FKAPMat::Concrete(Color * 1.12f); Plaster.Panel = 0.f; Plaster.VarAmt = 0.14f; Plaster.VarScale = 0.012f; Plaster.Grime = 0.65f; Plaster.Rust = 0.f;
+			FKAPMat Plinth = FKAPMat::Concrete(FLinearColor(0.32f, 0.27f, 0.22f)); Plinth.Panel = 0.f;
+			FKAPMat RoofM = FKAPMat::Sheet(RoofColor, 0.08f + R.FRand() * 0.15f, 1.f); RoofM.RibPeriod = 16.f; RoofM.Panel = 0.f; RoofM.DustTop = 0.7f; RoofM.VarAmt = 0.05f; RoofM.VarScale = 0.002f;
+			const FKAPMat TrimM = FKAPMat::Paint(Trim, 0.6f);
+			const float Pitch = FMath::DegreesToRadians(26.f), Hr = D * 0.5f * FMath::Tan(Pitch);
+			Box(FVector(0, 0, H / 2), FVector(W, D, H), Plaster);
+			Box(FVector(0, 0, 25), FVector(W + 10, D + 10, 50), Plinth, FRotator::ZeroRotator, false);
+			// маңдайша (шатыр астын толтыратын екі көлбеу блок; төменгі бөлігі қабырға ішінде жасырын)
+			const float Tk = Hr * 1.2f + 10.f;
+			for (float Sg : { -1.f, 1.f })
 			{
-				const float X = Sx * W / 3;
-				Box(FVector(X, D / 2 + 3, 180), FVector(90, 6, 80), Glass, FRotator::ZeroRotator, false);
-				Box(FVector(X, D / 2 + 7, 136), FVector(104, 14, 8), Frame, FRotator::ZeroRotator, false);
-				Box(FVector(X, D / 2 + 6, 224), FVector(104, 6, 8), Frame, FRotator::ZeroRotator, false);
-				for (int32 b = -2; b <= 2; b++) Box(FVector(X + b * 18, D / 2 + 9, 180), FVector(2.5f, 2.5f, 82), Steel, FRotator::ZeroRotator, false);
-				if (R.FRand() < 0.6f) for (float Sh : { -1.f, 1.f }) Box(FVector(X + Sh * 62, D / 2 + 8, 180), FVector(30, 4, 86), FKAPMat::Paint(FLinearColor(0.12f, 0.25f, 0.35f) * R.FRandRange(0.6f, 1.2f), 0.8f), FRotator::ZeroRotator, false);
+				const FVector Yax(0, FMath::Cos(Pitch), -Sg * FMath::Sin(Pitch)); // беткей бойымен (жотадан шетке +Sg)
+				const FVector Up(0, Sg * FMath::Sin(Pitch), FMath::Cos(Pitch));     // беткейдің сыртқы нормалі
+				const FRotator Rr = FRotationMatrix::MakeFromXY(FVector(1, 0, 0), Yax * Sg).Rotator();
+				const FVector TopMid(0, Sg * D * 0.25f, H + Hr * 0.5f);
+				Box(TopMid - Up * (Tk * 0.5f), FVector(W - 2.f, D * 0.5f / FMath::Cos(Pitch), Tk), Plaster, Rr, false);
+				// шатыр табағы: шеттерінен 45 см шығып тұрады (күнқағар), маңдайшадан 35 см
+				const FVector Down = FVector(0, Sg * FMath::Cos(Pitch), -FMath::Sin(Pitch));
+				Box(TopMid + Down * 22.f + Up * 3.f, FVector(W + 70.f, D * 0.5f / FMath::Cos(Pitch) + 48.f, 6.f), RoofM, Rr, true);
 			}
-			// науа, түтін мұржасы, кондиционер, антенна
-			Box(FVector(W / 2 + 8, D / 2 + 8, H / 2), FVector(10, 10, H), FKAPMat::RustySteel(), FRotator::ZeroRotator, false);
-			Box(FVector(W * 0.25f, -D * 0.2f, H + 80), FVector(50, 50, 110), FKAPMat::Concrete(FLinearColor(0.35f, 0.3f, 0.26f)), FRotator::ZeroRotator, false);
-			if (R.FRand() < 0.5f) { Box(FVector(-W / 2 - 22, 0, 230), FVector(40, 70, 50), FKAPMat::Paint(FLinearColor(0.8f, 0.8f, 0.76f), 0.6f), FRotator::ZeroRotator, false); }
-			if (R.FRand() < 0.5f) KAPVis::Add(this, RootComponent, EKAPShape::Sphere, FVector(-W * 0.3f, D * 0.2f, H + 70), FVector(90, 90, 20), FKAPMat::Paint(FLinearColor(0.75f, 0.75f, 0.72f), 0.5f), FRotator(35, 0, 0), false);
-			Box(FVector(0, 0, 6), FVector(W + 60, D + 60, 12), FKAPMat::Concrete());
-			Props(FVector(W / 2 + 150, D / 4, 0), 120, 2);
+			Box(FVector(0, 0, H + Hr + 5), FVector(W + 74, 28, 9), FKAPMat::Sheet(RoofColor * 0.8f, 0.4f, 0.f), FRotator::ZeroRotator, false);
+			// терезе: жақтау тақтасы + ішке батқан әйнек + терезе алды тақтасы; кейбірінде жапқыш
+			auto Win = [&](FVector At, FVector Nrm, float Ww, float Wh)
+			{
+				const FVector Side = FVector::CrossProduct(FVector::UpVector, Nrm); // терезе ені бағыты
+				const bool bAlongX = FMath::Abs(Side.X) > 0.5f;
+				auto Sz = [&](float A, float T, float Hh) { return bAlongX ? FVector(A, T, Hh) : FVector(T, A, Hh); };
+				Box(At + Nrm * 2.f, Sz(Ww + 18.f, 4.f, Wh + 18.f), TrimM, FRotator::ZeroRotator, false);
+				Box(At + Nrm * 3.f, Sz(Ww, 4.f, Wh), Glass, FRotator::ZeroRotator, false);
+				Box(At + Nrm * 8.f - FVector(0, 0, Wh * 0.5f + 12.f), Sz(Ww + 26.f, 14.f, 5.f), Frame, FRotator::ZeroRotator, false);
+				if (R.FRand() < 0.45f) for (float Sh : { -1.f, 1.f }) Box(At + Nrm * 6.f + Side * Sh * (Ww * 0.5f + 26.f), Sz(30.f, 4.f, Wh + 8.f), TrimM, FRotator::ZeroRotator, false);
+			};
+			const float Wy = H * 0.58f;
+			const float DoorX = bShop ? W * 0.28f : 0.f;
+			if (bShop) Win(FVector(-W * 0.14f, D / 2, Wy - 10.f), FVector(0, 1, 0), 260.f, 140.f); // витрина
+			else for (float Sx : { -1.f, 1.f }) Win(FVector(Sx * W * 0.3f, D / 2, Wy), FVector(0, 1, 0), 100.f, 110.f);
+			for (float Sx : { -1.f, 1.f }) Win(FVector(Sx * W * 0.28f, -D / 2, Wy), FVector(0, -1, 0), 90.f, 100.f);
+			for (float Sx : { -1.f, 1.f }) Win(FVector(Sx * W / 2, R.FRandRange(-D * 0.15f, D * 0.15f), Wy), FVector(Sx, 0, 0), 80.f, 95.f);
+			// есік: жақтау, ағаш полотно, бетон баспалдақ, күнқағар
+			Box(FVector(DoorX, D / 2 + 2, 104), FVector(118, 4, 218), TrimM, FRotator::ZeroRotator, false);
+			Box(FVector(DoorX, D / 2 + 4, 100), FVector(96, 5, 200), Wood, FRotator::ZeroRotator, false);
+			Box(FVector(DoorX + 36, D / 2 + 8, 100), FVector(6, 4, 4), Steel, FRotator::ZeroRotator, false);
+			Box(FVector(DoorX, D / 2 + 45, 10), FVector(160, 80, 20), FKAPMat::Concrete(), FRotator::ZeroRotator, true);
+			if (bShop) Box(FVector(0, D / 2 + 70, 236), FVector(W + 40, 150, 6), RoofM, FRotator(0, 0, 0), false); // дүкеннің ұзын күнқағары
+			else Box(FVector(0, D / 2 + 55, 238), FVector(170, 110, 6), RoofM, FRotator(0, 0, 0), false);
+			if (bShop) { Box(FVector(0, D / 2 + 4, 278), FVector(W * 0.85f, 6, 64), FKAPMat::Paint(FLinearColor(0.07f, 0.2f, 0.45f), 0.5f), FRotator::ZeroRotator, false); for (float Sx : { -1.f, 1.f }) Box(FVector(Sx * (W / 2 + 10), D / 2 + 140, 118), FVector(8, 8, 236), Steel, FRotator::ZeroRotator, false); }
+			// мұржа, науа, кейде спутник тарелкасы
+			Box(FVector(W * 0.22f, -D * 0.12f, H + Hr * 0.75f + 50.f), FVector(48, 48, Hr * 0.6f + 130.f), FKAPMat::Concrete(FLinearColor(0.42f, 0.36f, 0.3f)), FRotator::ZeroRotator, false);
+			Box(FVector(W / 2 + 6, D / 2 + 6, H / 2), FVector(9, 9, H), FKAPMat::RustySteel(), FRotator::ZeroRotator, false);
+			if (R.FRand() < 0.4f) KAPVis::Add(this, RootComponent, EKAPShape::Sphere, FVector(-W * 0.3f, D / 2 + 20, H - 30), FVector(80, 80, 18), FKAPMat::Paint(FLinearColor(0.78f, 0.78f, 0.75f), 0.5f), FRotator(70, 90, 0), false);
+			if (bBright)
+			{
+				// аула: алдында 4 м, артында 9 м, бүйірінде 3 м; алдыңғы қоршауда есік (1.4 м) және көлік қақпасы (3 м)
+				FKAPMat Picket = FKAPMat::Paint(R.FRand() < 0.5f ? FLinearColor(0.35f, 0.25f, 0.15f) : Trim * 0.9f, 0.85f); Picket.Ribs = 0.9f; Picket.RibPeriod = 11.f; Picket.Grime = 0.9f;
+				const float Fx = W / 2 + 300.f, Yf = D / 2 + 400.f, Yb = -D / 2 - 900.f, Fh = 130.f;
+				auto Panel = [&](FVector A, FVector B)
+				{
+					const FVector Mid = (A + B) * 0.5f, Dl = B - A;
+					const bool bX = FMath::Abs(Dl.X) > FMath::Abs(Dl.Y);
+					UStaticMeshComponent* C = Box(Mid + FVector(0, 0, Fh / 2), bX ? FVector(Dl.Size(), 4.f, Fh) : FVector(4.f, Dl.Size(), Fh), Picket, FRotator::ZeroRotator, true);
+					// қоршау ойыншы мен көлікке кедергі, NPC-лер өтіп кетеді (жол табуы қоршауды білмейді)
+					if (C) C->SetCollisionObjectType(ECC_Destructible);
+				};
+				Panel(FVector(-Fx, Yb, 0), FVector(Fx, Yb, 0));
+				Panel(FVector(-Fx, Yb, 0), FVector(-Fx, Yf, 0));
+				Panel(FVector(Fx, Yb, 0), FVector(Fx, Yf, 0));
+				Panel(FVector(-Fx, Yf, 0), FVector(-70.f, Yf, 0));
+				Panel(FVector(70.f, Yf, 0), FVector(Fx - 340.f, Yf, 0));
+				for (float X : { -Fx, -70.f, 70.f, Fx - 340.f, Fx }) Box(FVector(X, Yf, Fh / 2 + 10), FVector(10, 10, Fh + 20), Wood, FRotator::ZeroRotator, false);
+				// сарай: бір беткейлі шатыр
+				const FVector Sh(-Fx + 230.f, Yb + 200.f, 0);
+				Box(Sh + FVector(0, 0, 110), FVector(320, 260, 220), Wood);
+				Box(Sh + FVector(0, 0, 232), FVector(350, 300, 6), FKAPMat::Sheet(FLinearColor(0.35f, 0.33f, 0.3f), 0.7f), FRotator(0, 0, 8), false);
+				Props(FVector(Fx - 200.f, Yb + 260.f, 0), 90, 1);
+				// жіп (кір кептіретін) — екі бағана мен сым
+				Box(FVector(Fx - 120.f, -D / 2 - 300.f, 100), FVector(6, 6, 200), Steel, FRotator::ZeroRotator, false);
+				Box(FVector(Fx - 520.f, -D / 2 - 300.f, 100), FVector(6, 6, 200), Steel, FRotator::ZeroRotator, false);
+				Box(FVector(Fx - 320.f, -D / 2 - 300.f, 190), FVector(400, 1.5f, 1.5f), Steel, FRotator::ZeroRotator, false);
+				Box(FVector(Fx - 260.f, -D / 2 - 300.f, 165), FVector(60, 2, 50), FKAPMat::Paint(Trim * 1.4f, 0.9f), FRotator::ZeroRotator, false);
+			}
+			else Props(FVector(W / 2 + 150, D / 4, 0), 120, 2);
 		}
 		else
 		{
@@ -378,7 +443,7 @@ FVector2D AKAPStructure::FootprintHalf() const
 	switch (Type)
 	{
 	case EStructType::Wagon: return FVector2D(440, 170);
-	case EStructType::House: case EStructType::Ruin: return FVector2D(S.X * 0.5f + 30, S.Y * 0.5f + 30);
+	case EStructType::House: case EStructType::Ruin: case EStructType::Shop: return FVector2D(S.X * 0.5f + 30, S.Y * 0.5f + 30);
 	case EStructType::Workshop: return FVector2D((S.X > 2000.f ? 2200.f : 1800.f) * 0.5f + 20, 620);
 	case EStructType::HQOffice: return FVector2D(530, 430);
 	case EStructType::Yurt: return FVector2D(320, 320);
@@ -394,5 +459,21 @@ FVector2D AKAPStructure::FootprintHalf() const
 	case EStructType::Crate: return FVector2D(55, 40);
 	case EStructType::Silo: return FVector2D(160, 160);
 	default: return FVector2D::ZeroVector; // ұя, сүйектер — жалпақ, жолға кедергі емес
+	}
+}
+FLinearColor AKAPStructure::MapColor() const
+{
+	switch (Type)
+	{
+	case EStructType::House: case EStructType::Shop: return RoofColor * 1.25f + FLinearColor(0.06f, 0.06f, 0.06f, 0.f);
+	case EStructType::Ruin: return FLinearColor(0.3f, 0.26f, 0.22f);
+	case EStructType::Wagon: return FLinearColor(0.5f, 0.48f, 0.44f);
+	case EStructType::Workshop: return FLinearColor(0.55f, 0.56f, 0.58f);
+	case EStructType::HQOffice: return FLinearColor(0.62f, 0.62f, 0.64f);
+	case EStructType::GuardPost: return FLinearColor(0.5f, 0.45f, 0.35f);
+	case EStructType::Yurt: return FLinearColor(0.9f, 0.86f, 0.76f);
+	case EStructType::Silo: return FLinearColor(0.7f, 0.7f, 0.72f);
+	case EStructType::Tent: return FLinearColor(0.35f, 0.37f, 0.24f);
+	default: return FLinearColor(0.5f, 0.5f, 0.5f);
 	}
 }

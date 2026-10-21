@@ -9,6 +9,7 @@
 #include "KAP/Player/NavigatorComponent.h"
 #include "KAP/World/WellManagerSubsystem.h"
 #include "KAP/World/KAPWorldBuilder.h"
+#include "KAP/World/KAPStructure.h"
 #include "KAP/World/KAPVehicleHandle.h"
 #include "KAP/Audio/KAPAudio.h"
 #include "KAPSimulatorPawn.h"
@@ -371,9 +372,44 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		Line(A + Dd * t0, A + Dd * t1, Col, Th);
 	};
 	// ---- жолдар: қара жиек + ашық сызық ----
+	// асфальт — қою сұр, ақ жиекті, енірек; топырақ жол — ашық қоңыр, жіңішке (жақындағанда нақты еніне жетеді)
 	const float Rw = FMath::Clamp(1.6f * FMath::Sqrt(MapZoom), 1.6f, 5.f);
-	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.1f, 0.07f, 0.04f, 0.55f), Rw + 2.2f);
-	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.93f, 0.86f, 0.7f, 0.9f), Rw);
+	auto IsAsph = [](const KAPAI::FRoadEdge& E) { return E.BaseDanger <= 0.1001; };
+	const float RwA = FMath::Max(Rw + 1.2f, 8.f * MapScale), RwD = FMath::Max(Rw * 0.8f, 5.f * MapScale);
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) if (!IsAsph(E)) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.3f, 0.22f, 0.12f, 0.45f), RwD + 1.6f);
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) if (!IsAsph(E)) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.82f, 0.68f, 0.47f, 0.95f), RwD);
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) if (IsAsph(E)) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.92f, 0.9f, 0.84f, 0.9f), RwA + 2.4f);
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) if (IsAsph(E)) Seg(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.2f, 0.2f, 0.21f, 1.f), RwA);
+	// ---- ғимараттар (жақындағанда): нақты табаны мен бұрылысы бойынша, шатыр түсімен ----
+	if (MapZoom >= 1.8f)
+		for (KAPReg::TIter<AKAPStructure> It(GetWorld(), KAPReg::Structures()); It; ++It)
+		{
+			AKAPStructure* St = *It;
+			const EStructType Ty = St->Type;
+			if (!(Ty == EStructType::House || Ty == EStructType::Wagon || Ty == EStructType::Workshop || Ty == EStructType::HQOffice || Ty == EStructType::GuardPost || Ty == EStructType::Yurt || Ty == EStructType::Silo || Ty == EStructType::Ruin || Ty == EStructType::Tent)) continue;
+			const FVector2D C = KAP::CM2M(St->GetActorLocation());
+			const FVector2D Sc0 = To(C);
+			FVector2D Hf = St->FootprintHalf() / 100.0;
+			if (Ty == EStructType::House || Ty == EStructType::Ruin) Hf -= FVector2D(0.3, 0.3);
+			if (!In(Sc0, Hf.Size() * MapScale + 4)) continue;
+			const FLinearColor Roof = St->MapColor();
+			if (Ty == EStructType::Yurt || Ty == EStructType::Silo || Ty == EStructType::Tent)
+			{
+				Disc(Sc0, Hf.X * MapScale + 1.2f, FLinearColor(0.1f, 0.08f, 0.06f, 0.6f));
+				Disc(Sc0, Hf.X * MapScale, Roof);
+				continue;
+			}
+			const float Yr = FMath::DegreesToRadians(St->GetActorRotation().Yaw);
+			const FVector2D Ax(FMath::Cos(Yr), FMath::Sin(Yr)), Ay(-Ax.Y, Ax.X);
+			FVector2D Cn[4];
+			for (int32 k = 0; k < 4; k++) Cn[k] = To(C + Ax * Hf.X * ((k == 0 || k == 3) ? -1.0 : 1.0) + Ay * Hf.Y * (k < 2 ? -1.0 : 1.0));
+			// көлеңке (оңтүстік-шығысқа), шатыр, жотасы, жиегі
+			const FVector2D Sh(2.f, 2.f);
+			FillTri(Cn[0] + Sh, Cn[1] + Sh, Cn[2] + Sh, FLinearColor(0, 0, 0, 0.25f)); FillTri(Cn[0] + Sh, Cn[2] + Sh, Cn[3] + Sh, FLinearColor(0, 0, 0, 0.25f));
+			FillTri(Cn[0], Cn[1], Cn[2], Roof); FillTri(Cn[0], Cn[2], Cn[3], Roof);
+			if (Ty == EStructType::House) Line((Cn[0] + Cn[3]) * 0.5f, (Cn[1] + Cn[2]) * 0.5f, Roof * 0.7f, 1.2f);
+			for (int32 k = 0; k < 4; k++) Line(Cn[k], Cn[(k + 1) % 4], FLinearColor(0.12f, 0.1f, 0.08f, 0.8f), 1.f);
+		}
 	// ---- қауіп аймақтары, әскери аймақ ----
 	const bool bL[LNum] = { (MapLayers & (1 << LWells)) != 0, (MapLayers & (1 << LPlaces)) != 0, (MapLayers & (1 << LServices)) != 0, (MapLayers & (1 << LArmy)) != 0, (MapLayers & (1 << LShelter)) != 0, (MapLayers & (1 << LTowers)) != 0, (MapLayers & (1 << LJobs)) != 0, (MapLayers & (1 << LCars)) != 0, (MapLayers & (1 << LDanger)) != 0 };
 	if (bL[LDanger] && bLayerDanger) for (const FKAPDangerZone& Z : GM->Zones) { const FVector2D Zc = To(Z.P); if (In(Zc, Z.R * MapScale)) { Disc(Zc, Z.R * MapScale, FLinearColor(1, 0.15f, 0.1f, 0.04f + Z.Level * 0.06f)); Circle(Zc, Z.R * MapScale, FLinearColor(0.85f, 0.15f, 0.1f, 0.45f), 1.5f, 48); } }
@@ -408,8 +444,9 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		for (int32 m = 0; m < 3; m++)
 		{
 			const KAPAI::FRoute& R = Nav->Routes[m];
-			if (!R.bValid || (int32)Nav->Mode == m) continue;
-			for (int32 i = 1; i < R.Points.Num(); i++) Seg(To(R.Points[i - 1]), To(R.Points[i]), RC[m] * FLinearColor(1, 1, 1, 0.7f), 1.5f);
+			// «жолсыз тура» балама сызығы шатастыратын — тек өзі таңдалса көрінеді; басқа баламалар — бозғылт
+			if (!R.bValid || (int32)Nav->Mode == m || m == (int32)ENavMode::Direct) continue;
+			for (int32 i = 1; i < R.Points.Num(); i++) Seg(To(R.Points[i - 1]), To(R.Points[i]), RC[m] * FLinearColor(1, 1, 1, 0.35f), 1.5f);
 		}
 		if (const KAPAI::FRoute* Rt = Nav->Active())
 			for (int32 i = 1; i < Rt->Points.Num(); i++)
@@ -428,8 +465,8 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 		FPt Pt; Pt.P = Wp; Pt.Title = L.Title; Pt.bLabel = false; Pt.Layer = LPlaces; Pt.Icon = -1;
 		const FName T = L.Type;
 		if (T == "village") { Pt.Icon = IVillage; Pt.Col = FLinearColor(0.85f, 0.55f, 0.12f); Pt.Info = Id == "aksai" ? TEXT("Ауыл · ақсақал Төлеген, жасақ · жанында полиция мен дүкен") : TEXT("Ауыл · ақсақал Сағат, жасақ, полиция патрулі"); Pt.bLabel = true; }
-		else if (T == "police") { Pt.Icon = IPolice; Pt.Col = FLinearColor(0.12f, 0.32f, 0.85f); Pt.Info = TEXT("Капитан Әділет — бүйір жұмыстар, бандит сыйақысы"); Pt.Layer = LServices; Pt.bLabel = MapZoom > 2.5f; }
-		else if (T == "shop") { Pt.Icon = IShop; Pt.Col = FLinearColor(0.15f, 0.6f, 0.3f); Pt.Info = TEXT("Сатушы Ерболат — қару, оқ-дәрі, дәрі, сынық сатып алады"); Pt.Layer = LServices; Pt.bLabel = MapZoom > 2.5f; }
+		else if (T == "police") { Pt.Icon = IPolice; Pt.Col = FLinearColor(0.12f, 0.32f, 0.85f); Pt.Info = TEXT("Капитан Әділет — бүйір жұмыстар, бандит сыйақысы"); Pt.Layer = LServices; Pt.bLabel = MapZoom > 1.7f; }
+		else if (T == "shop") { Pt.Icon = IShop; Pt.Col = FLinearColor(0.15f, 0.6f, 0.3f); Pt.Info = TEXT("Сатушы Ерболат — қару, оқ-дәрі, дәрі, сынық сатып алады"); Pt.Layer = LServices; Pt.bLabel = MapZoom > 1.7f; if (GM->Builder && GM->Builder->bShopSlot) Pt.P = GM->Builder->ShopSlot; }
 		else if (T == "army") { Pt.Icon = IArmy; Pt.Col = FLinearColor(0.3f, 0.36f, 0.16f); Pt.Info = S.Flags.Contains("armyPass") ? TEXT("Әскери аймақ · рұқсат бар · қойма 20% арзан") : TEXT("Әскери аймақ · КІРУГЕ ТЫЙЫМ! Майор Сейітов қақпада жұмыс береді"); Pt.Layer = LArmy; Pt.bLabel = true; }
 		else if (T == "wagon") { Pt.Icon = IWagon; Pt.Col = FLinearColor(0.2f, 0.62f, 0.35f); Pt.Info = TEXT("Қауіпсіз баспана · ұйқы, сақтау, жәшік"); Pt.Layer = LShelter; }
 		else if (T == "tower") { const bool bOn = S.Towers.Contains(Id); Pt.Icon = ITower; Pt.Col = bOn ? FLinearColor(0.2f, 0.62f, 0.35f) : FLinearColor(0.45f, 0.45f, 0.45f); Pt.Info = bOn ? TEXT("Сигнал мұнарасы · қосулы") : TEXT("Сигнал мұнарасы · қосыңыз — жаңа аймақ ашылады"); Pt.Layer = LTowers; }
@@ -497,6 +534,7 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 	MapHoverP = Hover != INDEX_NONE ? Pts[Hover].P : FVector2D::ZeroVector;
 	// салу реті: көліктер → ұңғымалар → орындар → жұмыстар
 	static const int32 Order[] = { LCars, LWells, LShelter, LTowers, LPlaces, LDanger, LServices, LArmy, LJobs };
+	TArray<FBox2D> Taken; TArray<int32> Labels;
 	for (int32 Ly : Order)
 	{
 		if (!bL[Ly]) continue;
@@ -508,7 +546,35 @@ void AKAPHUD::DrawWorldMap(float X, float Y, float W, float H, bool bFull)
 			if (!In(Sp, 4)) continue;
 			const float R = Pt.Icon == ICar ? Ir * 0.8f : Pt.Icon == IWell ? Ir * 0.9f : Ir;
 			MapIcon(Pt.Icon, Sp, R, Pt.Col, Pt.Num, i == Hover);
-			if (Pt.bLabel && i != Hover) Txt(Sp.X + R + 6, Sp.Y - 9, Pt.Title, 14, FLinearColor(1, 0.97f, 0.9f), 0, true);
+			Taken.Add(FBox2D(Sp - FVector2D(R, R), Sp + FVector2D(R, R)));
+			if (Pt.bLabel && i != Hover) Labels.Add(i);
+		}
+	}
+	// жазулар бір-бірін және белгішелерді баспайды: оң / сол / үсті / асты — бос орынға, орын болмаса — жазылмайды
+	auto Prio = [&](int32 i) { const int32 L = Pts[i].Layer; return L == LPlaces ? 0 : L == LArmy ? 1 : L == LDanger ? 2 : L == LServices ? 3 : 4; };
+	Labels.Sort([&](int32 A, int32 B) { return Prio(A) < Prio(B); });
+	for (int32 i : Labels)
+	{
+		const FPt& Pt = Pts[i];
+		const FVector2D Sp = To(Pt.P);
+		const float R = Ir;
+		const FVector2D Ts = Measure(Pt.Title, 14);
+		const FVector2D Cand[4] = { FVector2D(Sp.X + R + 6, Sp.Y - 9), FVector2D(Sp.X - R - 6 - Ts.X, Sp.Y - 9), FVector2D(Sp.X - Ts.X / 2, Sp.Y - R - 4 - Ts.Y), FVector2D(Sp.X - Ts.X / 2, Sp.Y + R + 3) };
+		for (const FVector2D& C : Cand)
+		{
+			const FBox2D Bx(C - FVector2D(2, 1), C + Ts + FVector2D(2, 1));
+			bool bHit = false;
+			for (int32 k = 0; k < Taken.Num() && !bHit; k++)
+			{
+				// өз белгішесін есептемейміз
+				const FBox2D& T = Taken[k];
+				if (T.GetCenter().Equals(Sp, 0.5f)) continue;
+				bHit = T.Intersect(Bx);
+			}
+			if (bHit || C.X < X || C.X + Ts.X > X + W || C.Y < Y || C.Y + Ts.Y > Y + H) continue;
+			Txt(C.X, C.Y, Pt.Title, 14, FLinearColor(1, 0.97f, 0.9f), 0, true);
+			Taken.Add(Bx);
+			break;
 		}
 	}
 	// ---- жабық аймақтар (қараңғы) және аймақ атаулары ----

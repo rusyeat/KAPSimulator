@@ -76,6 +76,10 @@ protected:
 	/** Keeps track of which camera is active */
 	bool bFrontCameraActive = false;
 
+	/** V: артқы камераның екі қашықтығы (жақын / алыс). Ішкі камера алынды — корпус ішінде текстураға кіріп кететін */
+	int32 CamZoom = 0;
+	float ArmNear = 0.f, ArmLen = 0.f;
+
 	/** Keeps track of whether the car is flipped. If this is true for two flip checks, resets the vehicle automatically */
 	bool bPreviousFlipCheck = false;
 

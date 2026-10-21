@@ -16,6 +16,10 @@ class KAPSIMULATOR_API AKAPWorldBuilder : public AActor
 {
 	GENERATED_BODY()
 public:
+	/** Жол беттері (BuildRoadSurfaces) */
+	UPROPERTY() TArray<TObjectPtr<class UProceduralMeshComponent>> RoadMeshes;
+	/** Ақсай көшесіндегі дүкен орны (ауыл құрылғанда таңдалады; дүкен ғимараты мен сатушы осында) */
+	FVector2D ShopSlot = FVector2D::ZeroVector; float ShopYaw = 0.f; bool bShopSlot = false;
 	AKAPWorldBuilder();
 	void BuildAll();
 
@@ -30,6 +34,8 @@ public:
 	float Z(FVector2D PosM) const;
 private:
 	void BuildRoads();
+	/** Асфальт/топырақ жол беті (процедуралық таспа); активтер жоқ болса — false */
+	bool BuildRoadSurfaces();
 	/** Жолдың үстіне түсіп қалған ғимараттарды алып тастау */
 	void ClearRoadOverlaps();
 	bool OnRoad(const class AKAPStructure* S, float Margin) const;

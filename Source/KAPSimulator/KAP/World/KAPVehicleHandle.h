@@ -39,11 +39,16 @@ public:
 	float AutoMaxKmh = 45.f;
 	/** Фаралар мәжбүрлі (кіріспе) */
 	bool bLightsForced = false;
+	/** Көлікті сенімді түрде жаңа орынға қою: физика өшіріліп-қосылады (Chaos денесі ескі орнына қайтпауы үшін), жылдамдық нөл */
+	void PlaceAt(FVector At, float Yaw);
 private:
 	/** Қауіпсіздік: аударылса — дөңгелегіне, жер астына түссе — соңғы қауіпсіз орнына (KeepSafe) */
 	void KeepSafe(float Dt);
 	FTransform LastGoodXf = FTransform(FVector::ZeroVector);
 	float FlipT = 0.f, SafeAcc = 0.f;
+	/** Адамды қағу: көлік мешінің жергілікті шекарасы (бір рет есептеледі) */
+	void CheckPedestrianHits();
+	FVector HitExt = FVector::ZeroVector, HitCtr = FVector::ZeroVector;
 	/** Шаблон көлігінің рамасын жасырып, нақты дөңгелек орындарына сай корпус құрастыру (KAPVehicleBody.cpp) */
 	void BuildBody();
 	/** Тегіс корпус мештері (SM_KAP_Veh_*) болса — солармен құрастыру (KAPVehicleShell.cpp); болмаса false */

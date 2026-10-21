@@ -24,6 +24,8 @@ namespace
 {
 	FVector2D LocOf(const UObject* Ctx, FName Id)
 	{
+		// дүкен ауыл көшесіндегі орнына көшірілген (WorldBuilder::ShopSlot)
+		if (Id == "shop") if (const AKAPGameMode* GM = AKAPGameMode::Get(Ctx)) if (GM->Builder && GM->Builder->bShopSlot) return GM->Builder->ShopSlot;
 		const UKAPDataSubsystem* D = UKAPDataSubsystem::Get(Ctx);
 		const FKAPLocationRow* R = D ? D->Loc(Id) : nullptr;
 		return R ? FVector2D(R->X, R->Y) : FVector2D::ZeroVector;
@@ -637,19 +639,28 @@ void AKAPGameMode::BuildEconomyPlaces()
 	}
 	// ---------------- Ерболаттың дүкені ----------------
 	{
-		const FVector2D C = LocOf(this, "shop");
-		AKAPStructure* K = Builder->SpawnStruct((int32)EStructType::GuardPost, C, 0, FVector(1), FLinearColor(0.55f, 0.42f, 0.28f));
+		// дүкен ғимараты (7.6 × 5.2 м): есігі мен витринасы шығысқа (+X) қарайды; сатушы есік алдындағы сөренің артында (+3.2 м)
+		const FVector2D C = Builder->bShopSlot ? Builder->ShopSlot : LocOf(this, "shop");
+		const float ShYaw = Builder->bShopSlot ? Builder->ShopYaw : -90.f;
+		AKAPStructure* K = Builder->SpawnStruct((int32)EStructType::Shop, C, ShYaw, FVector(760, 520, 300), FLinearColor(0.8f, 0.76f, 0.66f), 3);
 		const FVector2D Kc = K ? KAP::CM2M(K->GetActorLocation()) : C;
-		if (AActor* A = SpawnProp(W, At(Kc), 0))
+		if (AActor* A = SpawnProp(W, At(Kc), ShYaw))
 		{
-			Sign(A, TEXT("ДҮКЕН · ҚАРУ-ЖАРАҚ"), FVector(0, 0, 420), 0, 46, AmberC);
-			Sign(A, TEXT("ДҮКЕН · ҚАРУ-ЖАРАҚ"), FVector(0, 0, 420), 180, 46, AmberC);
-			// сөре: жәшіктер, бөшке, қару тіреуіші
+			// жергілікті +Y = әлемдік +X (ғимараттың алды)
+			Sign(A, TEXT("ДҮКЕН"), FVector(0, 268, 288), 90, 30, AmberC);
+			Sign(A, TEXT("Азық-түлік · Қару-жарақ · Дәрі"), FVector(0, 268, 260), 90, 13, FColor(235, 230, 215));
+			// көше сөресі: тақтай үстел, үстінде консервілер мен су бөтелкелері
 			FKAPMat Wd = FKAPMat::Paint(FLinearColor(0.3f, 0.2f, 0.11f), 0.85f); Wd.Ribs = 0.4f; Wd.RibPeriod = 8.f;
-			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(330, 0, 50), FVector(80, 220, 100), Wd, FRotator::ZeroRotator, true);
-			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(330, 0, 103), FVector(90, 230, 6), FKAPMat::Paint(FLinearColor(0.15f, 0.1f, 0.06f), 0.6f), FRotator::ZeroRotator, false);
-			for (int32 i = 0; i < 4; i++) KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(300 + (i % 2) * 70.f, -320 + (i / 2) * 70.f, 30), FVector(60, 60, 60), Wd, FRotator(0, i * 12.f, 0), true);
-			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cylinder, FVector(320, 330, 50), FVector(60, 60, 100), FKAPMat::Sheet(FLinearColor(0.45f, 0.08f, 0.05f), 0.6f), FRotator::ZeroRotator, true);
+			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(-40, 400, 45), FVector(230, 60, 90), Wd, FRotator::ZeroRotator, true);
+			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(-40, 400, 92), FVector(240, 70, 5), FKAPMat::Paint(FLinearColor(0.15f, 0.1f, 0.06f), 0.6f), FRotator::ZeroRotator, false);
+			for (int32 i = 0; i < 6; i++) KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cylinder, FVector(-130 + i * 34.f, 398, 103), FVector(9, 9, 16), FKAPMat::Metal(FLinearColor(0.55f, 0.55f, 0.5f), 0.4f), FRotator::ZeroRotator, false);
+			for (int32 i = 0; i < 4; i++) KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cylinder, FVector(40 + i * 18.f, 405, 110), FVector(7, 7, 30), FKAPMat::Paint(FLinearColor(0.25f, 0.45f, 0.75f), 0.1f), FRotator::ZeroRotator, false);
+			// жәшіктер мен бөшке — ғимараттың бүйірінде
+			for (int32 i = 0; i < 4; i++) KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(470 + (i % 2) * 70.f, 120 + (i / 2) * 70.f, 30), FVector(60, 60, 60), Wd, FRotator(0, i * 12.f, 0), true);
+			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cylinder, FVector(470, -120, 50), FVector(60, 60, 100), FKAPMat::Sheet(FLinearColor(0.45f, 0.08f, 0.05f), 0.6f), FRotator::ZeroRotator, true);
+			// тоңазытқыш (сусын) — есік жанында
+			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(-300, 300, 85), FVector(70, 60, 170), FKAPMat::Paint(FLinearColor(0.7f, 0.08f, 0.06f), 0.4f), FRotator::ZeroRotator, true);
+			KAPVis::Add(A, A->GetRootComponent(), EKAPShape::Cube, FVector(-300, 331, 95), FVector(56, 3, 120), FKAPMat::Glow(FLinearColor(0.75f, 0.85f, 1.f), 1.5f), FRotator::ZeroRotator, false);
 		}
 	}
 	// ---------------- әскери аймақ ----------------
@@ -777,7 +788,8 @@ void AKAPGameMode::SpawnEconomyNPCs()
 	}
 	// сатушы
 	const FVector2D Sh = LocOf(this, "shop");
-	if (!Sh.IsZero()) if (AKAPNPC* N = Mk(ENPCKind::Trader, Sh + FVector2D(3.2f, 0), TEXT("Сатушы Ерболат"), "trader")) { N->PatrolR = 1; N->WanderR = 1; NamedNPC.Add("trader", N); }
+	const float ShY = (Builder && Builder->bShopSlot) ? FMath::DegreesToRadians(Builder->ShopYaw) : -UE_HALF_PI; // дүкеннің алды (жергілікті +Y)
+	if (!Sh.IsZero()) if (AKAPNPC* N = Mk(ENPCKind::Trader, Sh + FVector2D(-FMath::Sin(ShY), FMath::Cos(ShY)) * 3.2, TEXT("Сатушы Ерболат"), "trader")) { N->PatrolR = 1; N->WanderR = 1; NamedNPC.Add("trader", N); }
 	// әскер
 	if (bArmyBuilt)
 	{

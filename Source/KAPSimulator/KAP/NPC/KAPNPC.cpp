@@ -78,6 +78,12 @@ void AKAPNPC::BeginPlay()
 		// жылжымалы қаңқа сәуле трассировкасына енбейді (әр кадр BLAS жаңарту — қымбат)
 		SK->SetVisibleInRayTracing(false);
 	}
+	// оқ (Visibility сәулесі) енді капсулаға тиеді — қаңқа соқтығысы өшірулі болғандықтан бұрын оқ адамнан өтіп кететін
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	// көлік камерасы адамнан өткенде жақындап «секірмейді»
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	// аула қоршаулары (Destructible арнасы) NPC-ге кедергі емес — олардың жол табуы қоршауды білмейді
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Destructible, ECR_Ignore);
 	KAPReg::Add(KAPReg::NPCs(), this);
 	KAPReg::Add(KAPReg::Interactables(), (AActor*)this);
 }
@@ -473,9 +479,10 @@ void AKAPNPC::Interact(AKAPCharacter*) { if (!bDead && !TalkId.IsNone()) if (AKA
 
 float AKAPNPC::TakeDamage(float Damage, FDamageEvent const& Event, AController* Inst, AActor* Causer)
 {
-	if (bDead) return 0;
+	if (bDead || bKnockedOut) return 0;
 	if (Kind == ENPCKind::Worm && Rise < 0.3f) Damage *= 0.2f;
 	Hp -= Damage;
+	HurtTime = GetWorld()->GetTimeSeconds();
 	if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(Faction == EKAPFaction::Monster ? EKAPFX::Green : EKAPFX::Blood, GetActorLocation() + FVector(0, 0, 40));
 	const bool bByPlayer = Causer && Causer->IsA(AKAPCharacter::StaticClass());
 	AKAPGameMode* GM = AKAPGameMode::Get(this);
@@ -486,8 +493,81 @@ float AKAPNPC::TakeDamage(float Damage, FDamageEvent const& Event, AController* 
 		for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It)
 			if (*It != this && It->Faction == Faction && !It->bDead && FVector::Dist(It->GetActorLocation(), GetActorLocation()) < 5000.f) It->Aggro = 30;
 	}
-	if (Hp <= 0) Kill(bByPlayer);
+	if (Hp <= 0)
+	{
+		// сюжет кейіпкерлері (диалогы бар, NamedNPC) өлмейді — талады, 9 с кейін тұрады
+		bool bEssential = false;
+		if (GM) for (const auto& KV : GM->NamedNPC) if (KV.Value.Get() == this) { bEssential = true; break; }
+		if (bEssential && IsHuman()) Knockout();
+		else Kill(bByPlayer);
+	}
+	else PendingImpulse = FVector::ZeroVector;
 	return Damage;
+}
+
+void AKAPNPC::GoRagdoll()
+{
+	GetCharacterMovement()->DisableMovement();
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	USkeletalMeshComponent* SK = GetMesh();
+	SK->SetCollisionProfileName(TEXT("Ragdoll"));
+	// дене көлікке соқтықпайды: әйтпесе қаққан көліктің астына кіріп, жерге батып кетеді (және көлікті лақтырады)
+	SK->SetCollisionResponseToChannel(ECC_Vehicle, ECR_Ignore);
+	SK->SetComponentTickEnabled(true);
+	SK->SetSimulatePhysics(true);
+	// жылдам ұшқан дене жерден өтіп кетпеуі үшін — үздіксіз соқтығыс (CCD)
+	SK->SetAllUseCCD(true);
+	// соққы серпіні: көлік — бүкіл дене ұшады, оқ — тиген жерге (бас/кеуде)
+	if (!PendingImpulse.IsNearlyZero())
+	{
+		if (bImpulseWhole) SK->SetAllPhysicsLinearVelocity(PendingImpulse);
+		else SK->AddImpulse(PendingImpulse, PendingBone != NAME_None ? PendingBone : FName("spine_03"), true);
+	}
+	PendingImpulse = FVector::ZeroVector;
+}
+
+void AKAPNPC::Knockout()
+{
+	bKnockedOut = true; KOT = 9.f; Hp = 1.f;
+	if (UKAPAudio* A = UKAPAudio::Get(this)) A->Yell(GetActorLocation() + FVector(0, 0, 60), false);
+	GoRagdoll();
+	SetActorTickInterval(0.f);
+}
+
+void AKAPNPC::Recover()
+{
+	bKnockedOut = false;
+	USkeletalMeshComponent* SK = GetMesh();
+	// рагдолл жатқан жерге капсуланы көшіріп, денені қайта бекіту
+	const FVector Pelvis = SK->GetBoneLocation(TEXT("pelvis"));
+	SK->SetSimulatePhysics(false);
+	SK->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SK->AttachToComponent(GetCapsuleComponent(), FAttachmentTransformRules::KeepWorldTransform);
+	const float G = KAPVis::GroundZ(GetWorld(), Pelvis.X, Pelvis.Y, Pelvis.Z);
+	SetActorLocation(FVector(Pelvis.X, Pelvis.Y, G + 92.f), false, nullptr, ETeleportType::TeleportPhysics);
+	SK->SetRelativeLocationAndRotation(FVector(0, 0, -90), FRotator(0, -90, 0));
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	Hp = MaxHp * 0.4f;
+	LodTier = -1;
+}
+
+void AKAPNPC::HitByVehicle(const FVector& VehVel, float Damage, AActor* Causer, const FVector& VehPos)
+{
+	if (bDead || bKnockedOut) return;
+	const float T = GetWorld()->GetTimeSeconds();
+	if (T - LastVehHitT < 0.6f) return;
+	LastVehHitT = T;
+	if (UKAPAudio* A = UKAPAudio::Get(this)) A->Impact(GetActorLocation(), 0, 1.f);
+	// лақтыру: көлік бағытымен + жоғары; тірі қалса — кейін ұшып құлайды
+	// көлік жолынан бүйірге қарай (адам көліктің қай жағында тұрса — сол жаққа) — көлік денені қайта баспайды
+	const FVector Side = FVector::CrossProduct(VehVel.GetSafeNormal2D(), FVector::UpVector);
+	const float Sgn = FVector::DotProduct(GetActorLocation() - VehPos, Side) >= 0.f ? 1.f : -1.f;
+	const FVector Fling = VehVel * 0.9f + Side * Sgn * VehVel.Size() * FMath::FRandRange(0.15f, 0.3f) + FVector(0, 0, 260.f + VehVel.Size() * 0.12f);
+	SetHitImpulse(Fling, NAME_None, true);
+	const float HpBefore = Hp;
+	UGameplayStatics::ApplyDamage(this, Damage, Causer ? Causer->GetInstigatorController() : nullptr, Causer, nullptr);
+	if (!bDead && !bKnockedOut && Hp < HpBefore) LaunchCharacter(VehVel * 0.6f + FVector(0, 0, 280.f), true, true);
 }
 
 void AKAPNPC::Kill(bool bByPlayer)
@@ -496,14 +576,14 @@ void AKAPNPC::Kill(bool bByPlayer)
 	bDead = true; DeadT = 0;
 	// адамның өлім айқайы (әйелге — жоғарырақ)
 	if (IsHuman()) if (UKAPAudio* A = UKAPAudio::Get(this)) if (!A->PlayBank("Scream", GetActorLocation() + FVector(0, 0, 60), 1.f, bFemale ? 1.3f : FMath::FRandRange(0.92f, 1.04f))) A->Creature(GetActorLocation() + FVector(0, 0, 60), 1, 0.6f);
-	GetCharacterMovement()->DisableMovement();
-	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	if (IsHuman())
+	SetActorTickInterval(0.f);
+	if (IsHuman()) GoRagdoll();
+	else
 	{
-		GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-		GetMesh()->SetSimulatePhysics(true);
+		GetCharacterMovement()->DisableMovement();
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		for (UStaticMeshComponent* P : Parts) P->AddLocalRotation(FRotator(0, 0, 80));
 	}
-	else for (UStaticMeshComponent* P : Parts) P->AddLocalRotation(FRotator(0, 0, 80));
 	if (Carrying.IsValid()) Carrying = nullptr;
 	if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->OnActorKilled(this, bByPlayer);
 }
@@ -534,6 +614,7 @@ void AKAPNPC::Tick(float Dt)
 		if (DeadT > 40 && !bPersistent && WorkerIndex < 0) Destroy();
 		return;
 	}
+	if (bKnockedOut) { KOT -= Dt; if (KOT <= 0.f) Recover(); return; }
 	if (DistP > 450 && !bPersistent) { Destroy(); return; }
 	UpdateLod(DistP);
 	if (LodTier >= 3) return; // өте алыс: AI тоқтап тұрады, тек қашықтық тексеріледі

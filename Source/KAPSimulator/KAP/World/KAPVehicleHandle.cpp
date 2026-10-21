@@ -10,6 +10,8 @@
 #include "Components/PointLightComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/SkeletalMesh.h"
+#include "KAP/NPC/KAPNPC.h"
+#include "KAP/Player/KAPCharacter.h"
 
 AKAPVehicleHandle::AKAPVehicleHandle()
 {
@@ -93,13 +95,7 @@ void AKAPVehicleHandle::KeepSafe(float Dt)
 	const bool bUpright = FMath::Abs(R.Roll) < 30.f && FMath::Abs(R.Pitch) < 35.f;
 	const bool bSlow = Pawn->GetVelocity().Size() < 150.f;
 	if (LastGoodXf.GetLocation().IsNearlyZero()) LastGoodXf = Pawn->GetActorTransform();
-	auto Reset = [&](FVector At, float Yaw)
-	{
-		Pawn->SetActorLocationAndRotation(At, FRotator(0, Yaw, 0), false, nullptr, ETeleportType::ResetPhysics);
-		M->SetPhysicsLinearVelocity(FVector::ZeroVector);
-		M->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-		FlipT = 0.f;
-	};
+	auto Reset = [&](FVector At, float Yaw) { PlaceAt(At, Yaw); };
 	SafeAcc += Dt;
 	if (SafeAcc >= 0.5f)
 	{
@@ -126,6 +122,51 @@ void AKAPVehicleHandle::KeepSafe(float Dt)
 	}
 }
 
+void AKAPVehicleHandle::PlaceAt(FVector At, float Yaw)
+{
+	if (!Pawn) return;
+	USkeletalMeshComponent* M = Pawn->GetMesh();
+	const bool bSim = M && M->IsSimulatingPhysics();
+	if (bSim) M->SetSimulatePhysics(false);
+	Pawn->SetActorLocationAndRotation(At, FRotator(0, Yaw, 0), false, nullptr, ETeleportType::ResetPhysics);
+	if (bSim)
+	{
+		M->SetSimulatePhysics(true);
+		M->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
+		M->SetAllPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	}
+	LastGoodXf = Pawn->GetActorTransform();
+	FlipT = 0.f; SafeAcc = 0.f;
+	SetActorLocation(At);
+}
+
+void AKAPVehicleHandle::CheckPedestrianHits()
+{
+	USkeletalMeshComponent* M = Pawn->GetMesh();
+	if (!M || !M->IsSimulatingPhysics()) return;
+	const FVector Vel = Pawn->GetVelocity();
+	const float Kmh = Vel.Size() * 0.036f;
+	if (Kmh < 12.f) return;
+	if (HitExt.IsNearlyZero()) { const FBoxSphereBounds B = M->CalcBounds(FTransform::Identity); HitExt = B.BoxExtent; HitCtr = B.Origin; }
+	const FTransform Xf = M->GetComponentTransform();
+	AActor* Causer = bDriven ? (AActor*)AKAPCharacter::Get(this) : nullptr;
+	const float Reach = HitExt.Size() + 200.f;
+	for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It)
+	{
+		AKAPNPC* N = *It;
+		if (N->bDead || N->bKnockedOut) continue;
+		const FVector Np = N->GetActorLocation();
+		if (FVector::DistSquared(Np, Xf.GetLocation()) > Reach * Reach) continue;
+		// көлік қорабы + 40–45 см (капсула радиусы): тиіскен адам — жылдамдыққа қарай жарақат (≈40 км/сағ — өлім)
+		const FVector L = Xf.InverseTransformPosition(Np) - HitCtr;
+		if (FMath::Abs(L.X) < HitExt.X + 45.f && FMath::Abs(L.Y) < HitExt.Y + 40.f && FMath::Abs(L.Z) < HitExt.Z + 100.f)
+		{
+			N->HitByVehicle(Vel, (Kmh - 10.f) * 3.4f, Causer, Xf.GetLocation());
+			M->SetPhysicsLinearVelocity(Vel * 0.9f); // соққы — көлік сәл баяулайды
+		}
+	}
+}
+
 void AKAPVehicleHandle::Tick(float Dt)
 {
 	Super::Tick(Dt);
@@ -133,6 +174,7 @@ void AKAPVehicleHandle::Tick(float Dt)
 	UChaosWheeledVehicleMovementComponent* Mov = Cast<UChaosWheeledVehicleMovementComponent>(Pawn->GetChaosVehicleMovement());
 	const bool bActive = bDriven || bAutoPilot;
 	KeepSafe(Dt);
+	CheckPedestrianHits();
 	SetActorLocation(Pawn->GetActorLocation());
 	if (Mov && bActive) Rpm01 = FMath::Clamp(Mov->GetEngineRotationSpeed() / FMath::Max(1.f, Mov->GetEngineMaxRotationSpeed()), 0.f, 1.f);
 	else Rpm01 = FMath::FInterpTo(Rpm01, 0.f, Dt, 2.f);

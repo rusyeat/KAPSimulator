@@ -35,7 +35,10 @@ AKAPSimulatorPawn::AKAPSimulatorPawn()
 	BackSpringArm->SetupAttachment(GetMesh());
 	BackSpringArm->TargetArmLength = 650.0f;
 	BackSpringArm->SocketOffset.Z = 150.0f;
-	BackSpringArm->bDoCollisionTest = false;
+	// камера қабырға/жер ішіне кірмейді (өз көлігі есепке алынбайды)
+	BackSpringArm->bDoCollisionTest = true;
+	BackSpringArm->ProbeSize = 14.f;
+	BackSpringArm->ProbeChannel = ECC_Camera;
 	BackSpringArm->bInheritPitch = false;
 	BackSpringArm->bInheritRoll = false;
 	BackSpringArm->bEnableCameraRotationLag = true;
@@ -121,6 +124,17 @@ void AKAPSimulatorPawn::Tick(float Delta)
 	CameraYaw = FMath::FInterpTo(CameraYaw, 0.0f, Delta, 1.0f);
 
 	BackSpringArm->SetRelativeRotation(FRotator(0.0f, CameraYaw, 0.0f));
+
+	// камера қашықтығы көлік өлшеміне қарай (КамАЗ, БТР — алысырақ); V басқанда — 1.45 есе алыс
+	if (ArmNear <= 0.f)
+	{
+		const float L = FMath::Max(GetMesh()->Bounds.BoxExtent.X, 180.f);
+		ArmNear = FMath::Clamp(L * 3.0f, 720.f, 1350.f);
+		ArmLen = ArmNear;
+	}
+	ArmLen = FMath::FInterpTo(ArmLen, ArmNear * (CamZoom ? 1.5f : 1.f), Delta, 4.f);
+	BackSpringArm->TargetArmLength = ArmLen;
+	BackSpringArm->SocketOffset.Z = ArmLen * 0.25f;
 }
 
 void AKAPSimulatorPawn::Steering(const FInputActionValue& Value)
@@ -248,11 +262,11 @@ void AKAPSimulatorPawn::DoLookAround(float YawDelta)
 
 void AKAPSimulatorPawn::DoToggleCamera()
 {
-	// toggle the active camera flag
-	bFrontCameraActive = !bFrontCameraActive;
-
-	FrontCamera->SetActive(bFrontCameraActive);
-	BackCamera->SetActive(!bFrontCameraActive);
+	// V: жақын ↔ алыс артқы камера (ішкі камера жоқ). Қашықтық Tick ішінде біркелкі ауысады
+	CamZoom = (CamZoom + 1) % 2;
+	bFrontCameraActive = false;
+	FrontCamera->SetActive(false);
+	BackCamera->SetActive(true);
 }
 
 void AKAPSimulatorPawn::DoResetVehicle()

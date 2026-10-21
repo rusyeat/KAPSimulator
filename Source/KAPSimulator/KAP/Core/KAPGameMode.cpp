@@ -36,6 +36,8 @@
 extern ENGINE_API float GAverageFPS;
 extern ENGINE_API float GAverageMS;
 #include "KAP/World/KAPAtmosphere.h"
+#include "Components/CapsuleComponent.h"
+#include "ProceduralMeshComponent.h"
 
 // ---- әзірлеуші консолі: KAP.* командалары ----
 static AKAPGameMode* CmdGM(UWorld* W) { return W ? Cast<AKAPGameMode>(W->GetAuthGameMode()) : nullptr; }
@@ -240,6 +242,198 @@ void AKAPGameMode::BeginPlay()
 		}), 126.f, false);
 		for (int32 s = 130; s < 140; s += 2) { FTimerHandle Hs; GetWorldTimerManager().SetTimer(Hs, FTimerDelegate::CreateLambda([Log, s]() { Log(*FString::Printf(TEXT("t=%d"), s), true); }), (float)s, false); }
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 141.f, false);
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kaphittest")))
+	{
+		// Адамдарға зақым тексеру: А — АК-мен атылады (жолақ, өлім, рагдолл), Б — Нива қағады (ұшып өледі)
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPH_") + N + TEXT(".png"), true, false); };
+		TSharedRef<TArray<TWeakObjectPtr<AKAPNPC>>> Row = MakeShared<TArray<TWeakObjectPtr<AKAPNPC>>>();
+		auto LogN = [Row](const TCHAR* Tag)
+		{
+			for (int32 i = 0; i < Row->Num(); i++) if (AKAPNPC* N = (*Row)[i].Get())
+			{
+				const FVector Pv = N->GetMesh()->IsSimulatingPhysics() ? N->GetMesh()->GetBoneLocation("pelvis") : N->GetActorLocation();
+				UE_LOG(LogTemp, Display, TEXT("KAPHIT %s npc%d hp=%.0f/%.0f dead=%d ko=%d ragdoll=%d pos=(%.0f %.0f %.0f) ground=%.0f v=%.0f"), Tag, i, N->Hp, N->MaxHp, N->bDead ? 1 : 0, N->bKnockedOut ? 1 : 0, N->GetMesh()->IsSimulatingPhysics() ? 1 : 0, Pv.X, Pv.Y, Pv.Z, KAPVis::GroundZ(N->GetWorld(), Pv.X, Pv.Y, Pv.Z + 300.f), N->GetMesh()->IsSimulatingPhysics() ? N->GetMesh()->GetPhysicsLinearVelocity("pelvis").Size() : N->GetVelocity().Size());
+			}
+		};
+		auto Aim = [this](FVector At)
+		{
+			AKAPCharacter* P = Player(); APlayerController* PC = GetWorld()->GetFirstPlayerController(); if (!P || !PC) return;
+			FVector O; FRotator R; PC->GetPlayerViewPoint(O, R);
+			PC->SetControlRotation((At - O).Rotation());
+		};
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { SkipCinematic(); } },
+			{ 12.f, [this, Row]()
+			{
+				Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true;
+				S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5;
+				AKAPCharacter* P = Player(); if (!P) return;
+				const FVector Pl = P->GetActorLocation();
+				for (int32 i = 0; i < 2; i++)
+				{
+					const FVector W = Pl + FVector(900.f, i == 0 ? -150.f : 2200.f, 0);
+					if (AKAPNPC* N = SpawnNPC((int32)ENPCKind::Villager, KAP::CM2M(W), FString::Printf(TEXT("H%d"), i), true))
+					{
+						N->SetActorTickEnabled(false); N->GetCharacterMovement()->DisableMovement();
+						N->SetActorLocation(FVector(W.X, W.Y, KAPVis::GroundZ(GetWorld(), W.X, W.Y, Pl.Z) + 92.f));
+						N->SetActorRotation(FRotator(0, 180, 0));
+						Row->Add(N);
+					}
+				}
+				UKAPGameInstance* GI = UKAPGameInstance::Get(this);
+				GI->S.Mag.Add("ak", 30); GI->S.Ammo.Add("545", 120);
+				P->Equip("ak");
+			} },
+			{ 13.5f, [LogN]() { LogN(TEXT("spawn")); } },
+			{ 14.f, [Row, Aim]() { if (Row->Num() && (*Row)[0].IsValid()) Aim((*Row)[0]->GetActorLocation() + FVector(0, 0, 20)); } },
+			{ 15.f, [this, LogN]() { if (AKAPCharacter* P = Player())
+			{
+				const FVector O = P->Camera->GetComponentLocation(), Dir = P->GetViewRotation().Vector();
+				FHitResult H; FCollisionQueryParams Q(SCENE_QUERY_STAT(KAPHitT), false, P);
+				const bool bHit = GetWorld()->LineTraceSingleByChannel(H, O, O + Dir * 16000.f, ECC_Visibility, Q);
+				APlayerController* PC = GetWorld()->GetFirstPlayerController(); FVector Vo; FRotator Vr; PC->GetPlayerViewPoint(Vo, Vr);
+				UE_LOG(LogTemp, Display, TEXT("KAPHIT trace hit=%d actor=%s comp=%s dist=%.0f cam=(%.0f %.0f %.0f) view=(%.0f %.0f %.0f) frozen=%d"), bHit ? 1 : 0, *GetNameSafe(H.GetActor()), *GetNameSafe(H.GetComponent()), H.Distance, O.X, O.Y, O.Z, Vo.X, Vo.Y, Vo.Z, P->bFrozen ? 1 : 0);
+				UE_LOG(LogTemp, Display, TEXT("KAPHIT camfwd=%s viewrot=%s ctrl=%s"), *Dir.ToString(), *Vr.ToString(), *PC->GetControlRotation().ToString());
+				for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It) if (It->DisplayName == TEXT("H0"))
+				{
+					UCapsuleComponent* Cp = It->GetCapsuleComponent();
+					FHitResult H2; const bool b2 = GetWorld()->LineTraceSingleByChannel(H2, O, It->GetActorLocation(), ECC_Visibility, Q);
+					UE_LOG(LogTemp, Display, TEXT("KAPHIT direct hit=%d actor=%s comp=%s | capsule enabled=%d vis=%d pawnresp=%d profile=%s r=%.0f hh=%.0f"), b2 ? 1 : 0, *GetNameSafe(H2.GetActor()), *GetNameSafe(H2.GetComponent()), (int32)Cp->GetCollisionEnabled(), (int32)Cp->GetCollisionResponseToChannel(ECC_Visibility), (int32)Cp->GetCollisionResponseToChannel(ECC_Pawn), *Cp->GetCollisionProfileName().ToString(), Cp->GetScaledCapsuleRadius(), Cp->GetScaledCapsuleHalfHeight());
+				}
+				P->FireStart(); P->FireStop();
+			} } },
+			{ 15.3f, [LogN, Shot]() { LogN(TEXT("shot1")); Shot(TEXT("01_hpbar")); } },
+			{ 16.f, [this]() { if (AKAPCharacter* P = Player()) { P->FireStart(); P->FireStop(); } } },
+			{ 16.5f, [this]() { if (AKAPCharacter* P = Player()) { P->FireStart(); P->FireStop(); } } },
+			{ 17.f, [this]() { if (AKAPCharacter* P = Player()) { P->FireStart(); P->FireStop(); } } },
+			{ 17.5f, [this]() { if (AKAPCharacter* P = Player()) { P->FireStart(); P->FireStop(); } } },
+			{ 17.7f, [LogN, Shot]() { LogN(TEXT("shot5")); Shot(TEXT("02_shot_dead")); } },
+			{ 19.f, [LogN, Shot]() { LogN(TEXT("after_shot")); Shot(TEXT("03_ragdoll")); } },
+			// Нива 30 м-ден Б адамына қарай 60 км/сағ
+			{ 20.f, [this, Row, Aim]()
+			{
+				if (Row->Num() < 2 || !(*Row)[1].IsValid()) return;
+				AKAPNPC* B = (*Row)[1].Get(); const FVector Bp = B->GetActorLocation();
+				AKAPCharacter* P = Player(); if (!P) return;
+				const FVector Cam = Bp + FVector(-1100.f, -700.f, 0);
+				P->SetActorLocation(FVector(Cam.X, Cam.Y, KAPVis::GroundZ(GetWorld(), Cam.X, Cam.Y, Bp.Z) + 110), false, nullptr, ETeleportType::TeleportPhysics);
+				Aim(Bp + FVector(0, 0, 60));
+				for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn)
+				{
+					const FVector St0 = Bp + FVector(-3000.f, 0, 0);
+					V->PlaceAt(FVector(St0.X, St0.Y, KAPVis::GroundZ(GetWorld(), St0.X, St0.Y, Bp.Z) + 90.f), 0.f);
+					V->Fuel = 20; V->State = "ok";
+					V->bAutoPilot = true; V->AutoTarget = Bp + FVector(4000.f, 0, 0); V->AutoMaxKmh = 70.f;
+					V->Pawn->GetMesh()->SetPhysicsLinearVelocity(FVector(1700.f, 0, 0));
+					const FVector Got = V->Pawn->GetActorLocation();
+					UE_LOG(LogTemp, Display, TEXT("KAPHIT car launched want=(%.0f %.0f) got=(%.0f %.0f %.0f) sim=%d ctrl=%s"), St0.X, St0.Y, Got.X, Got.Y, Got.Z, V->Pawn->GetMesh()->IsSimulatingPhysics() ? 1 : 0, *GetNameSafe(V->Pawn->GetController()));
+				}
+			} },
+			{ 20.15f, [this]() { for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) UE_LOG(LogTemp, Display, TEXT("KAPHIT niva +0.15 kmh=%.0f at=(%.0f %.0f %.0f)"), V->SpeedKmh(), V->Pawn->GetActorLocation().X, V->Pawn->GetActorLocation().Y, V->Pawn->GetActorLocation().Z); } },
+			{ 20.6f, [this, LogN]() { LogN(TEXT("car+0.6")); for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) UE_LOG(LogTemp, Display, TEXT("KAPHIT niva kmh=%.0f at=(%.0f %.0f %.0f)"), V->SpeedKmh(), V->Pawn->GetActorLocation().X, V->Pawn->GetActorLocation().Y, V->Pawn->GetActorLocation().Z); } },
+			{ 21.2f, [this, LogN]() { LogN(TEXT("car+1.2")); for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) UE_LOG(LogTemp, Display, TEXT("KAPHIT niva kmh=%.0f at=(%.0f %.0f %.0f)"), V->SpeedKmh(), V->Pawn->GetActorLocation().X, V->Pawn->GetActorLocation().Y, V->Pawn->GetActorLocation().Z); } },
+			{ 21.7f, [LogN, Shot]() { LogN(TEXT("car+1.7")); Shot(TEXT("04_car_hit")); } },
+			{ 22.3f, [this, LogN, Shot]() { LogN(TEXT("car+2.3")); if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) UE_LOG(LogTemp, Display, TEXT("KAPHIT ctrl at 22.3 = %s"), *PC->GetControlRotation().ToString()); Shot(TEXT("05_car_fly")); } },
+			{ 24.f, [this, LogN, Shot, Row, Aim]() { LogN(TEXT("car+4")); if (Row->Num() > 1 && (*Row)[1].IsValid()) Aim((*Row)[1]->GetMesh()->GetBoneLocation("pelvis")); for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva") V->bAutoPilot = false; } },
+			{ 24.5f, [Shot]() { Shot(TEXT("06_car_after")); } },
+			{ 26.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kaproadshots")))
+	{
+		// Жолдарды тексеру: асфальт (жақын/алыс), қиылыс, топырақ жол, із ішіндегі Нива, көлік камерасы (жақын/алыс)
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPR_") + N + TEXT(".png"), true, false); };
+		auto Go = [this](FVector2D Pm, FVector2D LookM, float Up, float Pitch)
+		{
+			AKAPCharacter* P = Player(); APlayerController* PC = GetWorld()->GetFirstPlayerController(); if (!P || !PC) return;
+			P->SetActorLocation(FVector(Pm.X * 100, Pm.Y * 100, KAPVis::GroundZ(GetWorld(), Pm.X * 100, Pm.Y * 100, 0) + 100 + Up), false, nullptr, ETeleportType::TeleportPhysics);
+			const FVector2D D = LookM - Pm;
+			PC->SetControlRotation(FRotator(Pitch, FMath::RadiansToDegrees(FMath::Atan2(D.Y, D.X)), 0));
+		};
+		auto Mid = [](FVector2D A, FVector2D B, float T) { return FMath::Lerp(A, B, (double)T); };
+		const FVector2D Start(-1000, 820), Wag0(-960, 790), Ja(-820, 760), W1(-780, 640), W4(-850, 350), Jb(-620, 720);
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { SkipCinematic(); } },
+			{ 12.f, [this]() { Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 33.5; } },
+			{ 13.f, [Go, Mid, Ja, Jb]() { const FVector2D P = Mid(Ja, Jb, 0.3f); Go(P, Jb, 0.f, -7.f); } },
+			{ 15.f, [this, Shot]() {
+				Shot(TEXT("01_asphalt"));
+				if (AKAPCharacter* P = Player())
+				{
+					const FVector L = P->GetActorLocation();
+					TArray<FHitResult> Hs; GetWorld()->LineTraceMultiByObjectType(Hs, L, L - FVector(0, 0, 3000), FCollisionObjectQueryParams(FCollisionObjectQueryParams::AllObjects), FCollisionQueryParams(SCENE_QUERY_STAT(KAPRd), true, P));
+					for (const FHitResult& H : Hs) UE_LOG(LogTemp, Display, TEXT("KAPROADDBG hit %s / %s z=%.1f"), *GetNameSafe(H.GetActor()), *GetNameSafe(H.GetComponent()), H.ImpactPoint.Z);
+					UE_LOG(LogTemp, Display, TEXT("KAPROADDBG ground=%.1f player=(%.0f %.0f %.0f)"), KAPVis::GroundZ(GetWorld(), L.X, L.Y, -1), L.X, L.Y, L.Z);
+					if (Builder) for (UProceduralMeshComponent* Pm : Builder->RoadMeshes) if (Pm && Pm->Bounds.GetBox().ExpandBy(200.f).IsInsideXY(L))
+					{
+						UE_LOG(LogTemp, Display, TEXT("KAPROADDBG pmc %s box=%s vis=%d mat=%s"), *Pm->GetName(), *Pm->Bounds.GetBox().ToString(), Pm->IsVisible() ? 1 : 0, *GetNameSafe(Pm->GetMaterial(0)));
+						if (FProcMeshSection* Sec = Pm->GetProcMeshSection(0))
+						{
+							const FProcMeshVertex& V0 = Sec->ProcVertexBuffer[0];
+							UE_LOG(LogTemp, Display, TEXT("KAPROADDBG v0 pos=%s n=%s col=%s uv=%s idx=%d,%d,%d"), *V0.Position.ToString(), *V0.Normal.ToString(), *V0.Color.ToString(), *V0.UV0.ToString(), Sec->ProcIndexBuffer[0], Sec->ProcIndexBuffer[1], Sec->ProcIndexBuffer[2]);
+						}
+					}
+				}
+			} },
+			{ 15.5f, [Go, Mid, Ja, Jb]() { const FVector2D P = Mid(Ja, Jb, 0.45f); Go(P, Mid(Ja, Jb, 0.47f), -40.f, -35.f); } },
+			{ 17.f, [Shot]() { Shot(TEXT("02_asphalt_close")); } },
+			{ 17.5f, [Go, Ja, Jb, W1]() { Go(Ja + FVector2D(-14, 12), Ja, 260.f, -25.f); } },
+			{ 19.f, [Shot]() { Shot(TEXT("03_junction")); } },
+			{ 19.5f, [Go, Mid, W1, W4]() { const FVector2D P = Mid(W1, W4, 0.35f); Go(P, W4, 0.f, -7.f); } },
+			{ 21.f, [Shot]() { Shot(TEXT("04_dirt")); } },
+			{ 21.5f, [Go, Mid, W1, W4]() { const FVector2D P = Mid(W1, W4, 0.42f); Go(P, Mid(W1, W4, 0.44f), -40.f, -38.f); } },
+			{ 23.f, [Shot]() { Shot(TEXT("05_dirt_close")); } },
+			// Нива топырақ жолдың ортасында, бағытымен — дөңгелектер ізге түсе ме
+			{ 23.5f, [this, Go, Mid, W1, W4]()
+			{
+				const FVector2D C = Mid(W1, W4, 0.55f), D = (W4 - W1).GetSafeNormal();
+				for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn)
+					V->PlaceAt(FVector(C.X * 100, C.Y * 100, KAPVis::GroundZ(GetWorld(), C.X * 100, C.Y * 100, 0) + 60), FMath::RadiansToDegrees(FMath::Atan2(D.Y, D.X)));
+				Go(C - D * 7.0 + FVector2D(-D.Y, D.X) * 0.0, C, 60.f, -14.f);
+			} },
+			{ 26.f, [Shot]() { Shot(TEXT("06_niva_ruts")); } },
+			{ 26.5f, [this]() { for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) EnterVehicle(V.Get()); } },
+			{ 29.f, [Shot]() { Shot(TEXT("07_car_cam_near")); } },
+			{ 29.5f, [this]() { for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) V->Pawn->DoToggleCamera(); } },
+			{ 32.f, [Shot]() { Shot(TEXT("08_car_cam_far")); } },
+			{ 32.5f, [this]() { for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) V->Pawn->DoToggleCamera(); } },
+			{ 35.f, [Shot]() { Shot(TEXT("09_car_cam_back_near")); } },
+			{ 36.f, [Go, Start, Ja]() { Go(Start + FVector2D(10, -6), Ja, 900.f, -20.f); } },
+			{ 38.f, [Shot]() { Shot(TEXT("10_overview")); } },
+			// ауыл: көшеден, жоғарыдан, дүкен алды; карта (жақын) — үйлер, жазулар
+			{ 38.5f, [this, Go]() {
+				if (AKAPVehicleHandle* V = CurrentVehicle.Get()) { V->Pawn->DoThrottle(0); ExitVehicle(); }
+				const FVector2D C(-520, 900), Jb(-620, 720); const FVector2D Dk = (Jb - C).GetSafeNormal();
+				Go(C + Dk * 70.0, C, 0.f, -4.f); } },
+			{ 41.f, [Shot]() { Shot(TEXT("11_village_street")); } },
+			{ 41.5f, [this, Go]() { const FVector2D C(-520, 900); if (AKAPCharacter* P = Player()) { P->GetCharacterMovement()->SetMovementMode(MOVE_Flying); P->GetCharacterMovement()->StopMovementImmediately(); } Go(C + FVector2D(-45, -60), C, 2500.f, -38.f); } },
+			{ 44.f, [this, Shot]() { Shot(TEXT("12_village_air")); } },
+			{ 44.3f, [this]() { if (AKAPCharacter* P = Player()) P->GetCharacterMovement()->SetMovementMode(MOVE_Walking); } },
+			{ 44.5f, [this, Go]() {
+				if (Builder && Builder->bShopSlot)
+				{
+					const float Y = FMath::DegreesToRadians(Builder->ShopYaw); const FVector2D Fr(-FMath::Sin(Y), FMath::Cos(Y));
+					Go(Builder->ShopSlot + Fr * 11.0 + FVector2D(Fr.Y, -Fr.X) * 3.0, Builder->ShopSlot, 0.f, -3.f);
+				} } },
+			{ 47.f, [Shot]() { Shot(TEXT("13_shop")); } },
+			{ 47.5f, [this, Go]() { const FVector2D C(-520, 900); Go(C + FVector2D(18, 30), C + FVector2D(18, -30), 0.f, -2.f); } },
+			{ 50.f, [Shot]() { Shot(TEXT("14_house_close")); } },
+			{ 50.5f, [this]() { S().Regions = { true, true, true, true }; S().bHasTablet = true; if (AKAPHUD* H = AKAPHUD::Get(this)) { H->ToggleMap(); H->MapDebug(FVector2D(-520, 900), 6.f); }
+				if (AKAPCharacter* P = Player()) if (P->Navigator) P->Navigator->SetTarget(FVector2D(800, 850), TEXT("Жосалы ауылы")); } },
+			{ 52.f, [Shot]() { Shot(TEXT("15_map_village")); } },
+			{ 52.5f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->MapDebug(FVector2D(-300, 650), 2.2f); } },
+			{ 54.f, [Shot]() { Shot(TEXT("16_map_route")); } },
+			{ 54.5f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->ToggleMap(); for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva" && V->Pawn) EnterVehicle(V.Get()); } },
+			{ 57.f, [Shot]() { Shot(TEXT("17_gps_drive")); } },
+			{ 58.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
 	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapperf")))
 	{

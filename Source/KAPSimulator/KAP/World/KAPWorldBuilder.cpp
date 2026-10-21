@@ -10,6 +10,7 @@
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "ProceduralMeshComponent.h"
 
 AKAPWorldBuilder::AKAPWorldBuilder()
 {
@@ -146,16 +147,60 @@ void AKAPWorldBuilder::BuildAll()
 	for (const TCHAR* Id : { TEXT("aksai"), TEXT("josaly") })
 	{
 		const FVector2D C = L(Id);
-		for (int32 i = 0; i < 10; i++)
-		{
-			const float A = i / 10.f * UE_TWO_PI + R.FRandRange(0, 0.3f), Rr = R.FRandRange(25, 55);
-			SpawnStruct((int32)EStructType::House, C + FVector2D(FMath::Cos(A), FMath::Sin(A)) * Rr, R.RandRange(0, 3) * 90.f, FVector(R.FRandRange(600, 900), R.FRandRange(500, 700), 320), HouseCols[R.RandRange(0, 4)], i);
-		}
-		SpawnStruct((int32)EStructType::Yurt, C + FVector2D(8, -10), 0, FVector(1), FLinearColor::White);
-		SpawnStruct((int32)EStructType::Campfire, C + FVector2D(-4, 4), 0, FVector(1), FLinearColor::White);
+		// үйлер ауылға кіретін жолдардың бойымен қатар тұрады (көше), есігі жолға қарайды, артында аула.
+		// Орталықта алаң (киіз үй, от), бірінші орын — дүкенге (Ақсайда)
+		const bool bAksai = FCString::Strcmp(Id, TEXT("aksai")) == 0;
+		const int32 Ni = D->Graph.Nodes.IndexOfByPredicate([&](const KAPAI::FRoadNode& N) { return N.Id == FName(Id); });
+		TArray<FVector2D> Dirs;
+		if (Ni != INDEX_NONE) for (const TPair<int32, int32>& Ad : D->Graph.Nodes[Ni].Adj) Dirs.Add((D->Graph.Nodes[Ad.Key].Pos - C).GetSafeNormal());
+		if (Dirs.Num() == 0) Dirs.Add(FVector2D(1, 0));
+		if (Dirs.Num() == 1) Dirs.Add(-Dirs[0]); // тұйық ауыл — көше әрі қарай жалғасады
+		// алаң жолдардан алыс жаққа: жол бағыттарының қосындысына қарама-қарсы
+		FVector2D Away(0, 0); for (const FVector2D& Dv : Dirs) Away -= Dv;
+		Away = Away.SizeSquared() > 0.04 ? Away.GetSafeNormal() : FVector2D(-Dirs[0].Y, Dirs[0].X);
+		const FVector2D AwayN(Away.Y, -Away.X);
+		const FVector2D Plaza = C + Away * 10.0, SiloP = C + Away * 12.0 + AwayN * 24.0;
+		if (Dirs.Num() < 3) Dirs.Add(Away); // жолсыз бүйір көше (құмды өткел)
+		TArray<FVector2D> Used; Used.Add(C); // алаң
+		TArray<float> UsedR; UsedR.Add(16.f);
+		if (const FKAPLocationRow* Pr = D->Loc("police")) if (FVector2D::Distance(FVector2D(Pr->X, Pr->Y), C) < 150.f) { Used.Add(FVector2D(Pr->X, Pr->Y)); UsedR.Add(26.f); }
+		Used[0] = Plaza; Used.Add(SiloP); UsedR.Add(6.f); // алаң, су мұнарасы
+		auto Free = [&](FVector2D P, float Rr) { for (int32 k = 0; k < Used.Num(); k++) if (FVector2D::Distance(P, Used[k]) < Rr + UsedR[k]) return false; return true; };
+		int32 Built = 0; bool bShopDone = !bAksai;
+		for (float T : { 20.f, 35.f, 50.f, 65.f })
+			for (int32 di = 0; di < FMath::Min(4, Dirs.Num()); di++)
+				for (float Sd : { 1.f, -1.f })
+				{
+					if (Built >= 14) break;
+					const FVector2D Dk = Dirs[di], Nk(Dk.Y, -Dk.X);
+					const float Wc = R.FRandRange(760, 950), Dc = R.FRandRange(560, 680);
+					const float Off = 4.f + 1.5f + 4.f + Dc / 200.f;
+					const FVector2D P = C + Dk * (T + R.FRandRange(-2.f, 2.f)) + Nk * Sd * Off;
+					const FVector2D ToRoad = -Nk * Sd;
+					const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(-ToRoad.X, ToRoad.Y));
+					if (!Free(P, 7.5f)) continue;
+					// аула басқа жолға шықпасын (артқы бұрыштар, бүйір ортасы)
+					const FVector2D Bk = P - ToRoad * ((Dc / 200.f) + 9.f), Sdv(ToRoad.Y, -ToRoad.X);
+					const float Hw = Wc / 200.f + 3.f;
+					if (DistToRoadCm((Bk + Sdv * Hw) * 100.0) < 500.f || DistToRoadCm((Bk - Sdv * Hw) * 100.0) < 500.f || DistToRoadCm((P + Sdv * Hw) * 100.0) < 500.f || DistToRoadCm((P - Sdv * Hw) * 100.0) < 500.f) continue;
+					if (!bShopDone)
+					{
+						// дүкен: жолға қарап, ауласыз; сатушы есік алдындағы сөренің артында тұрады
+						ShopSlot = C + Dk * T + Nk * Sd * (4.f + 1.5f + 2.6f + 1.f); ShopYaw = Yaw; bShopSlot = true; bShopDone = true;
+						Used.Add(ShopSlot); UsedR.Add(7.f);
+						continue;
+					}
+					if (SpawnStruct((int32)EStructType::House, P, Yaw, FVector(Wc, Dc, 320), HouseCols[R.RandRange(0, 4)], Built + (bAksai ? 0 : 50), true))
+					{
+						Used.Add(P); UsedR.Add(7.5f); Built++;
+					}
+				}
+		UE_LOG(LogTemp, Display, TEXT("KAPVILLAGE %s: %d houses, shop slot=%d"), Id, Built, bAksai && bShopSlot ? 1 : 0);
+		SpawnStruct((int32)EStructType::Yurt, Plaza + Away * 4.0 + AwayN * 5.0, 0, FVector(1), FLinearColor::White);
+		SpawnStruct((int32)EStructType::Campfire, Plaza - AwayN * 3.0, 0, FVector(1), FLinearColor::White);
 		SpawnStruct((int32)EStructType::Barrier, C + FVector2D(-62, 0), 90, FVector(800, 60, 110), FLinearColor::Gray);
 		SpawnStruct((int32)EStructType::Barrier, C + FVector2D(62, 0), 90, FVector(800, 60, 110), FLinearColor::Gray);
-		SpawnStruct((int32)EStructType::Silo, C + FVector2D(-30, -40), 0, FVector(1), FLinearColor::Gray);
+		SpawnStruct((int32)EStructType::Silo, SiloP, 0, FVector(1), FLinearColor::Gray);
 		SpawnSpot(FName(*FString::Printf(TEXT("crate:%s"), Id)), FVector((C.X - 8) * 100, (C.Y + 2) * 100, Z(C + FVector2D(-8, 2)) + 40), 200, true);
 		Label(this, FCString::Strcmp(Id, TEXT("aksai")) == 0 ? TEXT("AKSAI") : TEXT("ZHOSALY"), FVector((C.X - 66) * 100, C.Y * 100, Z(C) + 600), 160, FColor(242, 193, 78));
 	}
@@ -221,30 +266,125 @@ void AKAPWorldBuilder::BuildAll()
 	AKAPStructure::InvalidateCache();
 }
 
+/** Жол беті: әр жолға жер бедеріне жабысқан таспа (процедуралық меш).
+ *  Қауіпсіз жолдар (Danger ≤ 0.1) — асфальт: 7 см қалың қабат, жиегі көлбеу, соқтығысы бар (дөңгелек үстінде жүреді);
+ *  қалғаны — топырақ жол: екі із ±0.72 м (көлік дөңгелегінің аралығы), жиегі құмға сіңеді. */
+bool AKAPWorldBuilder::BuildRoadSurfaces()
+{
+	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
+	UMaterialInterface* RoadM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Road.M_KAP_Road"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UTexture* DA = LoadObject<UTexture>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_RoadDirt_A.T_KAP_RoadDirt_A"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UTexture* DN = LoadObject<UTexture>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_RoadDirt_N.T_KAP_RoadDirt_N"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UTexture* DM = LoadObject<UTexture>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_RoadDirt_M.T_KAP_RoadDirt_M"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!RoadM || !DA || !DN || !DM || !D) return false;
+	UMaterialInstanceDynamic* MatA = UMaterialInstanceDynamic::Create(RoadM, this);
+	UMaterialInstanceDynamic* MatD = UMaterialInstanceDynamic::Create(RoadM, this);
+	MatD->SetTextureParameterValue("TexA", DA); MatD->SetTextureParameterValue("TexN", DN); MatD->SetTextureParameterValue("TexM", DM);
+	MatD->SetScalarParameterValue("SandDrift", 0.3f);
+	MatA->SetScalarParameterValue("SandDrift", 0.3f);
+	// көлденең қима: x (м, оң — сол жаққа), биіктік (см)
+	static const float AX[9] = { -4.0f, -3.45f, -3.1f, -1.55f, 0.f, 1.55f, 3.1f, 3.45f, 4.0f };
+	static const float AZ[9] = { 1.5f, 1.8f, 7.f, 7.5f, 8.f, 7.5f, 7.f, 1.8f, 1.5f };
+	static const float DX[9] = { -3.0f, -1.9f, -1.0f, -0.72f, 0.f, 0.72f, 1.0f, 1.9f, 3.0f };
+	static const float DZ[9] = { 1.5f, 3.5f, 2.5f, 0.8f, 3.f, 0.8f, 2.5f, 3.5f, 1.5f };
+	TArray<int32> Deg; Deg.Init(0, D->Graph.Nodes.Num());
+	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) { Deg[E.A]++; Deg[E.B]++; }
+	int32 NA = 0, ND = 0, NV = 0;
+	for (int32 e = 0; e < D->Graph.Edges.Num(); e++)
+	{
+		const KAPAI::FRoadEdge& E = D->Graph.Edges[e];
+		const bool bAsph = E.BaseDanger <= 0.1001;
+		const float* Xs = bAsph ? AX : DX; const float* Zs = bAsph ? AZ : DZ;
+		const float Wm = bAsph ? 8.f : 6.f, Lm = bAsph ? 32.f : 24.f;
+		const FVector2D A = D->Graph.Nodes[E.A].Pos, B = D->Graph.Nodes[E.B].Pos;
+		const float Len = (float)FVector2D::Distance(A, B);
+		if (Len < 1.f) continue;
+		const FVector2D Dir = (B - A) / Len;
+		const FVector2D Lft(Dir.Y, -Dir.X);
+		const float Ext = Wm * 0.5f; // қиылыста жалғасу үшін ұшы түйіннен әрі шығады
+		const int32 Rows = FMath::Max(2, FMath::CeilToInt32((Len + 2.f * Ext) / 2.f) + 1);
+		const float Bias = (e % 5) * 0.35f + (bAsph ? 0.f : -0.2f); // қабаттасқан жолдар жыпылықтамасын
+		const float VOff = (float)((e * 7919) % 97) / 97.f * Lm;
+		const bool bEndA = Deg[E.A] <= 1, bEndB = Deg[E.B] <= 1;
+		TArray<FVector> P; TArray<FVector> Nn; TArray<FVector2D> UV; TArray<FLinearColor> VC; TArray<FProcMeshTangent> Tg; TArray<int32> Tri;
+		P.Reserve(Rows * 9); UV.Reserve(Rows * 9); VC.Reserve(Rows * 9);
+		for (int32 r = 0; r < Rows; r++)
+		{
+			const float S = -Ext + (Len + 2.f * Ext) * r / (Rows - 1);
+			// ұшында (түйіннен әрі) қабат жерге қарай жұқарады; тұйық ұшта — біртіндеп мөлдір
+			float K = 1.f, Al = 1.f;
+			if (S < 0.f) { K = 1.f - (-S / Ext) * 0.85f; if (bEndA) Al = FMath::Clamp((S + Ext) / 4.f, 0.f, 1.f); }
+			if (S > Len) { K = 1.f - ((S - Len) / Ext) * 0.85f; if (bEndB) Al = FMath::Clamp((Len + Ext - S) / 4.f, 0.f, 1.f); }
+			const FVector2D C = A + Dir * S;
+			for (int32 i = 0; i < 9; i++)
+			{
+				const FVector2D Q = C + Lft * Xs[i];
+				P.Add(FVector(Q.X * 100.0, Q.Y * 100.0, Z(Q) + Zs[i] * K + Bias));
+				UV.Add(FVector2D(0.5 + Xs[i] / Wm, (S + VOff) / Lm));
+				VC.Add(FLinearColor(1, 1, 1, Al));
+			}
+		}
+		Nn.SetNum(P.Num()); Tg.SetNum(P.Num());
+		for (int32 r = 0; r < Rows; r++) for (int32 i = 0; i < 9; i++)
+		{
+			const FVector Along = P[FMath::Min(r + 1, Rows - 1) * 9 + i] - P[FMath::Max(r - 1, 0) * 9 + i];
+			const FVector Across = P[r * 9 + FMath::Min(i + 1, 8)] - P[r * 9 + FMath::Max(i - 1, 0)];
+			FVector N = FVector::CrossProduct(Across, Along).GetSafeNormal();
+			if (N.Z < 0) N = -N;
+			Nn[r * 9 + i] = N;
+			Tg[r * 9 + i] = FProcMeshTangent(Across.GetSafeNormal(), false);
+		}
+		Tri.Reserve((Rows - 1) * 8 * 6);
+		for (int32 r = 0; r + 1 < Rows; r++) for (int32 i = 0; i < 8; i++)
+		{
+			const int32 V0 = r * 9 + i, V1 = V0 + 1, V2 = V0 + 9, V3 = V2 + 1;
+			Tri.Append({ V0, V2, V1, V1, V2, V3 }); // UE алдыңғы беті: жоғарыдан қарағанда сағат тілімен
+		}
+		UProceduralMeshComponent* Pm = NewObject<UProceduralMeshComponent>(this);
+		Pm->SetupAttachment(RootComponent);
+		Pm->bUseAsyncCooking = true;
+		Pm->SetCastShadow(false);
+		Pm->bAffectDistanceFieldLighting = false;
+		Pm->SetCollisionProfileName(bAsph ? TEXT("BlockAll") : TEXT("NoCollision"));
+		Pm->CreateMeshSection_LinearColor(0, P, Tri, Nn, UV, VC, Tg, bAsph);
+		Pm->SetMaterial(0, bAsph ? (UMaterialInterface*)MatA : (UMaterialInterface*)MatD);
+		Pm->RegisterComponent();
+		Pm->ComponentTags.Add(bAsph ? FName("SurfAsphalt") : FName("SurfDirt"));
+		RoadMeshes.Add(Pm);
+		(bAsph ? NA : ND)++; NV += P.Num();
+	}
+	UE_LOG(LogTemp, Display, TEXT("KAPROAD surfaces: asphalt=%d dirt=%d verts=%d"), NA, ND, NV);
+	return true;
+}
+
 void AKAPWorldBuilder::BuildRoads()
 {
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
-	Roads = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
-	Roads->SetStaticMesh(KAPVis::Mesh(EKAPShape::CubeLow));
-	Roads->SetupAttachment(RootComponent);
-	{ FKAPMat Rd = FKAPMat::Paint(FLinearColor(0.42f, 0.32f, 0.21f), 0.97f); Rd.VarAmt = 0.06f; Rd.VarScale = 0.003f; Rd.Grime = 0.35f; Rd.DustTop = 0.f; Roads->SetMaterial(0, KAPVis::MakeMID(Roads, Rd)); } // тапталған топырақ жол, ұяшықсыз
-	Roads->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Roads->SetCastShadow(false);
-	Roads->RegisterComponent();
-	for (const KAPAI::FRoadEdge& E : D->Graph.Edges)
+	if (!BuildRoadSurfaces())
 	{
-		const FVector2D A = D->Graph.Nodes[E.A].Pos, B = D->Graph.Nodes[E.B].Pos;
-		const int32 Steps = FMath::Max(2, FMath::CeilToInt32(E.Len / 6.0));
-		const FVector2D Dir = (B - A).GetSafeNormal();
-		const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
-		for (int32 s = 0; s < Steps; s++)
+		// ескі нұсқа (жол активтері жоқ болса): тегіс топырақ жолақтар
+		Roads = NewObject<UHierarchicalInstancedStaticMeshComponent>(this);
+		Roads->SetStaticMesh(KAPVis::Mesh(EKAPShape::CubeLow));
+		Roads->SetupAttachment(RootComponent);
+		{ FKAPMat Rd = FKAPMat::Paint(FLinearColor(0.42f, 0.32f, 0.21f), 0.97f); Rd.VarAmt = 0.06f; Rd.VarScale = 0.003f; Rd.Grime = 0.35f; Rd.DustTop = 0.f; Roads->SetMaterial(0, KAPVis::MakeMID(Roads, Rd)); }
+		Roads->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Roads->SetCastShadow(false);
+		Roads->RegisterComponent();
+		for (const KAPAI::FRoadEdge& E : D->Graph.Edges)
 		{
-			const FVector2D P0 = FMath::Lerp(A, B, (double)s / Steps), P1 = FMath::Lerp(A, B, (double)(s + 1) / Steps);
-			const FVector2D Pm = (P0 + P1) * 0.5;
-			const float Z0 = Z(P0), Z1 = Z(P1);
-			const float Len = (float)FVector2D::Distance(P0, P1) * 100.f;
-			const float Pitch = FMath::RadiansToDegrees(FMath::Atan2(Z1 - Z0, Len));
-			Roads->AddInstance(FTransform(FRotator(Pitch, Yaw, 0), FVector(Pm.X * 100, Pm.Y * 100, (Z0 + Z1) * 0.5f + 4), FVector(Len / 100.f * 1.08f, 5.f, 0.08f)));
+			const FVector2D A = D->Graph.Nodes[E.A].Pos, B = D->Graph.Nodes[E.B].Pos;
+			const int32 Steps = FMath::Max(2, FMath::CeilToInt32(E.Len / 6.0));
+			const FVector2D Dir = (B - A).GetSafeNormal();
+			const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
+			for (int32 s = 0; s < Steps; s++)
+			{
+				const FVector2D P0 = FMath::Lerp(A, B, (double)s / Steps), P1 = FMath::Lerp(A, B, (double)(s + 1) / Steps);
+				const FVector2D Pm = (P0 + P1) * 0.5;
+				const float Z0 = Z(P0), Z1 = Z(P1);
+				const float Len = (float)FVector2D::Distance(P0, P1) * 100.f;
+				const float Pitch = FMath::RadiansToDegrees(FMath::Atan2(Z1 - Z0, Len));
+				Roads->AddInstance(FTransform(FRotator(Pitch, Yaw, 0), FVector(Pm.X * 100, Pm.Y * 100, (Z0 + Z1) * 0.5f + 4), FVector(Len / 100.f * 1.08f, 5.f, 0.08f)));
+			}
 		}
 	}
 	// ---- электр желісі жол бойымен: ағаш/бетон бағаналар (~45 м), траверс, изолятор, салбыраған үш сым ----

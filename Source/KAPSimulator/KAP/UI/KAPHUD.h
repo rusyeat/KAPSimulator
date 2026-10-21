@@ -60,6 +60,7 @@ private:
 	// ---- бөлімдер ----
 	void DrawGameplay(float Dt);
 	void DrawMinimap(float X, float Y, float R);
+	void DrawNPCHealth();
 	void DrawToasts(float Dt);
 	void DrawSubtitle(float Dt);
 	void DrawMenu();

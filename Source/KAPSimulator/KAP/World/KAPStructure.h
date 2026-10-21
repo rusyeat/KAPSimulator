@@ -10,7 +10,7 @@
 class UPointLightComponent;
 
 UENUM()
-enum class EStructType : uint8 { Wagon, House, Ruin, Yurt, Campfire, Tower, Tank, Tent, Barrier, GuardPost, HQOffice, Fence, Gate, Wreck, Crate, Nest, Silo, Bones, Workshop };
+enum class EStructType : uint8 { Wagon, House, Ruin, Yurt, Campfire, Tower, Tank, Tent, Barrier, GuardPost, HQOffice, Fence, Gate, Wreck, Crate, Nest, Silo, Bones, Workshop, Shop };
 
 UCLASS()
 class KAPSIMULATOR_API AKAPStructure : public AActor
@@ -26,6 +26,9 @@ public:
 	FVector BuildSize = FVector::ZeroVector;
 	/** Жердегі табан (жарты өлшем, см, актердің жергілікті осьтерінде); 0 — тексерілмейді */
 	FVector2D FootprintHalf() const;
+	/** Шатыр түсі (үйлер) және картадағы түс */
+	FLinearColor RoofColor = FLinearColor(0.4f, 0.4f, 0.4f);
+	FLinearColor MapColor() const;
 	TArray<FBox2D> IndoorBoxes;   // әлем см
 	float ShadeR = 0.f;           // см
 	bool bFire = false;

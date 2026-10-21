@@ -15,6 +15,9 @@ class KAPSIMULATOREDITOR_API UKAPEditorLibrary : public UBlueprintFunctionLibrar
 	GENERATED_BODY()
 public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateMaterials();
+	/** Жолдар: асфальт пен топырақ жол текстуралары (процедуралық), M_KAP_Road */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateRoadAssets();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateRoadMaterial();
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateMeshes();
 	/** Атмосфера материалдары: жарықта жарқырайтын шаң, аяқ/дөңгелек ізі декалі */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateAtmosphereMaterials();

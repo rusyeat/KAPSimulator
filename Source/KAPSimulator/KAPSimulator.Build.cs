@@ -26,7 +26,8 @@ public class KAPSimulator : ModuleRules
 			"AudioMixer",
 			"AudioExtensions",
 			"RenderCore",
-			"RHI"
+			"RHI",
+			"ProceduralMeshComponent"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {
