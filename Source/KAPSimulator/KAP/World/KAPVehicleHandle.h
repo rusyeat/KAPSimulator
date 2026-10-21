@@ -40,9 +40,10 @@ public:
 	/** Фаралар мәжбүрлі (кіріспе) */
 	bool bLightsForced = false;
 private:
-	/** Өнімділік: тұрған, алыстағы көліктің физикасы мен дөңгелек есебі ұйықтайды */
-	bool bSleeping = false;
-	void SetSleeping(bool bSleep);
+	/** Қауіпсіздік: аударылса — дөңгелегіне, жер астына түссе — соңғы қауіпсіз орнына (KeepSafe) */
+	void KeepSafe(float Dt);
+	FTransform LastGoodXf = FTransform(FVector::ZeroVector);
+	float FlipT = 0.f, SafeAcc = 0.f;
 	/** Шаблон көлігінің рамасын жасырып, нақты дөңгелек орындарына сай корпус құрастыру (KAPVehicleBody.cpp) */
 	void BuildBody();
 	/** Тегіс корпус мештері (SM_KAP_Veh_*) болса — солармен құрастыру (KAPVehicleShell.cpp); болмаса false */

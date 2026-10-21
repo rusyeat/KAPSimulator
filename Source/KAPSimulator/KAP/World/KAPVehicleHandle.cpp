@@ -82,20 +82,47 @@ void AKAPVehicleHandle::UpdateLights(float Dt)
 	if (TailL) TailL->SetIntensity((bBrake ? 10.f : 2.5f) * FMath::Max(K, bBrake ? 1.f : 0.f));
 }
 
-void AKAPVehicleHandle::SetSleeping(bool bSleep)
+void AKAPVehicleHandle::KeepSafe(float Dt)
 {
-	bSleeping = bSleep;
-	SetActorTickInterval(bSleep ? 0.25f : 0.f);
-	if (!Pawn) return;
-	// көлік павнының барлық тикі (Chaos қозғалысы, дөңгелектер, камера) — ұйықтағанда тоқтайды
-	Pawn->SetActorTickEnabled(!bSleep);
-	for (UActorComponent* C : Pawn->GetComponents())
-		if (C && C->PrimaryComponentTick.bCanEverTick) C->SetComponentTickEnabled(!bSleep);
-	// симуляция толық тоқтайды (ұйқыдағы денеде де анимация/overlap есебі қалады), оянғанда қайта қосылады
-	if (USkeletalMeshComponent* M = Pawn->GetMesh())
+	// Тұрақ көліктің физикасын өшіріп-қосу (бұрынғы «ұйқы») Chaos көлігін лақтырып жіберетін — алынып тасталды.
+	// Оның орнына: аударылып қалса — дөңгелегіне қою, жер астына түсіп кетсе — соңғы қауіпсіз орнына қайтару.
+	USkeletalMeshComponent* M = Pawn->GetMesh();
+	if (!M || !M->IsSimulatingPhysics()) return;
+	const FVector L = Pawn->GetActorLocation();
+	const FRotator R = Pawn->GetActorRotation();
+	const bool bUpright = FMath::Abs(R.Roll) < 30.f && FMath::Abs(R.Pitch) < 35.f;
+	const bool bSlow = Pawn->GetVelocity().Size() < 150.f;
+	if (LastGoodXf.GetLocation().IsNearlyZero()) LastGoodXf = Pawn->GetActorTransform();
+	auto Reset = [&](FVector At, float Yaw)
 	{
-		if (bSleep) { M->PutAllRigidBodiesToSleep(); M->SetSimulatePhysics(false); }
-		else { M->SetSimulatePhysics(true); M->WakeAllRigidBodies(); }
+		Pawn->SetActorLocationAndRotation(At, FRotator(0, Yaw, 0), false, nullptr, ETeleportType::ResetPhysics);
+		M->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		M->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		FlipT = 0.f;
+	};
+	SafeAcc += Dt;
+	if (SafeAcc >= 0.5f)
+	{
+		SafeAcc = 0.f;
+		const float G = KAPVis::GroundZ(GetWorld(), L.X, L.Y, L.Z);
+		if (L.Z < G - 400.f || L.Z < -200000.f)
+		{
+			// жер астына түсіп кеткен — соңғы қауіпсіз орнына, дөңгелегімен
+			const FVector P = LastGoodXf.GetLocation();
+			Reset(FVector(P.X, P.Y, KAPVis::GroundZ(GetWorld(), P.X, P.Y, P.Z) + 120.f), LastGoodXf.Rotator().Yaw);
+			UE_LOG(LogTemp, Warning, TEXT("KAPVEH %s fell below ground — restored"), *Id.ToString());
+			return;
+		}
+		if (bUpright && bSlow && L.Z > G - 100.f) LastGoodXf = Pawn->GetActorTransform();
+	}
+	// қатты аударылған (бүйірімен/төбесімен жатыр) және қозғалмайды — 3 с кейін дөңгелегіне
+	const bool bOver = FMath::Abs(R.Roll) > 55.f || FMath::Abs(R.Pitch) > 55.f;
+	FlipT = (bOver && bSlow) ? FlipT + Dt : 0.f;
+	if (FlipT > 3.f)
+	{
+		Reset(FVector(L.X, L.Y, KAPVis::GroundZ(GetWorld(), L.X, L.Y, L.Z) + 120.f), R.Yaw);
+		UE_LOG(LogTemp, Display, TEXT("KAPVEH %s was flipped — set back on wheels"), *Id.ToString());
+		if (bDriven) if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Toast(TEXT("Көлік қайта дөңгелегіне тұрғызылды"), "info");
 	}
 }
 
@@ -105,14 +132,7 @@ void AKAPVehicleHandle::Tick(float Dt)
 	if (!Pawn) return;
 	UChaosWheeledVehicleMovementComponent* Mov = Cast<UChaosWheeledVehicleMovementComponent>(Pawn->GetChaosVehicleMovement());
 	const bool bActive = bDriven || bAutoPilot;
-	{
-		const APawn* Me = GetWorld()->GetFirstPlayerController() ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr;
-		const float DistP = Me ? FVector::Dist(Me->GetActorLocation(), Pawn->GetActorLocation()) / 100.f : 0.f;
-		const bool bStill = Pawn->GetVelocity().SizeSquared() < 60.f * 60.f;
-		if (!bSleeping && !bActive && bStill && DistP > 35.f && GetGameTimeSinceCreation() > 6.f) SetSleeping(true);
-		else if (bSleeping && (bActive || DistP < 30.f)) SetSleeping(false);
-		if (bSleeping) return;
-	}
+	KeepSafe(Dt);
 	SetActorLocation(Pawn->GetActorLocation());
 	if (Mov && bActive) Rpm01 = FMath::Clamp(Mov->GetEngineRotationSpeed() / FMath::Max(1.f, Mov->GetEngineMaxRotationSpeed()), 0.f, 1.f);
 	else Rpm01 = FMath::FInterpTo(Rpm01, 0.f, Dt, 2.f);

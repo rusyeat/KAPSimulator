@@ -195,6 +195,52 @@ void AKAPGameMode::BeginPlay()
 		}
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 36.f, false);
 	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvehflip")))
+	{
+		// Көліктің аударылуын тексеру: жаңа ойын → кіріспе → ойыншы әр көлікке жақындайды; еңкею (roll/pitch) логқа
+		auto Log = [this](const TCHAR* Tag, bool bAll)
+		{
+			if (!Builder) return;
+			for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Pawn)
+			{
+				const FRotator R = V->Pawn->GetActorRotation();
+				const bool bFlip = FMath::Abs(R.Roll) > 25.f || FMath::Abs(R.Pitch) > 25.f;
+				if (bAll || bFlip) UE_LOG(LogTemp, Display, TEXT("KAPFLIP %s %s roll=%.0f pitch=%.0f z=%.0f v=%.0f sim=%d%s"), Tag, *V->Id.ToString(), R.Roll, R.Pitch, V->Pawn->GetActorLocation().Z, V->Pawn->GetVelocity().Size(), V->Pawn->GetMesh()->IsSimulatingPhysics() ? 1 : 0, bFlip ? TEXT(" FLIPPED") : TEXT(""));
+			}
+		};
+		FTimerHandle H0; GetWorldTimerManager().SetTimer(H0, FTimerDelegate::CreateLambda([this]() { MenuNewGame(); }), 3.f, false);
+		for (int32 s = 4; s < 130; s++)
+		{
+			FTimerHandle Hs; GetWorldTimerManager().SetTimer(Hs, FTimerDelegate::CreateLambda([Log, s]() { Log(*FString::Printf(TEXT("t=%d"), s), s % 10 == 0); }), (float)s, false);
+		}
+		// кіріспеден кейін: ойыншы әр көлікке 9 м жақындайды (оятады), 5 с күтеді
+		static const TCHAR* Ids[] = { TEXT("bukhanka"), TEXT("uaz469"), TEXT("niva"), TEXT("kamaz"), TEXT("water"), TEXT("btr") };
+		for (int32 i = 0; i < 6; i++)
+		{
+			const FName Vid(Ids[i]);
+			FTimerHandle Ha; GetWorldTimerManager().SetTimer(Ha, FTimerDelegate::CreateLambda([this, Vid]()
+			{
+				if (Cine.IsSet()) SkipCinematic();
+				for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == Vid && V->Pawn) if (AKAPCharacter* P = Player())
+				{
+					const FVector C = V->Pawn->GetActorLocation() + V->Pawn->GetActorRightVector() * 900.f;
+					P->SetActorLocation(FVector(C.X, C.Y, KAPVis::GroundZ(GetWorld(), C.X, C.Y, C.Z) + 110), false, nullptr, ETeleportType::TeleportPhysics);
+					UE_LOG(LogTemp, Display, TEXT("KAPFLIP approach %s"), *Vid.ToString());
+				}
+			}), 70.f + i * 9.f, false);
+		}
+		// мәжбүрлі тексеріс: Нива бүйірімен жатқызылады (3 с кейін тұруы керек), КамАЗ жер астына итеріледі (қайтуы керек)
+		FTimerHandle Hf; GetWorldTimerManager().SetTimer(Hf, FTimerDelegate::CreateLambda([this]()
+		{
+			for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Pawn)
+			{
+				if (V->Id == "niva") { V->Pawn->SetActorRotation(FRotator(0, V->Pawn->GetActorRotation().Yaw, 95.f), ETeleportType::ResetPhysics); UE_LOG(LogTemp, Display, TEXT("KAPFLIP force niva on side")); }
+				if (V->Id == "kamaz") { V->Pawn->SetActorLocation(V->Pawn->GetActorLocation() - FVector(0, 0, 1500.f), false, nullptr, ETeleportType::ResetPhysics); UE_LOG(LogTemp, Display, TEXT("KAPFLIP force kamaz underground")); }
+			}
+		}), 126.f, false);
+		for (int32 s = 130; s < 140; s += 2) { FTimerHandle Hs; GetWorldTimerManager().SetTimer(Hs, FTimerDelegate::CreateLambda([Log, s]() { Log(*FString::Printf(TEXT("t=%d"), s), true); }), (float)s, false); }
+		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 141.f, false);
+	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapperf")))
 	{
 		// Өнімділікті өлшеу: ойын ағынының қай бөлігі уақыт алатынын логқа жазу (stat dumpave)
@@ -425,7 +471,7 @@ void AKAPGameMode::StartSession(bool bLoad)
 		D->Brigades->ForeachRow<FKAPBrigadeRow>(TEXT("KAP"), [&](const FName& K, const FKAPBrigadeRow& B)
 			{ FKAPBrigadeState St; St.Id = K; St.Pos = St.Base = FVector2D(B.X, B.Y); Ss.Brigades.Add(St); });
 		for (const TWeakObjectPtr<AKAPVehicleHandle>& V : Builder->Vehicles)
-			if (V.IsValid()) { FKAPVehicleSave Vs; Vs.Id = V->Id; Vs.Fuel = V->Fuel; Vs.Hp = V->Hp; Vs.State = V->State; Vs.Xf = V->Pawn->GetActorTransform(); Ss.VehicleStates.Add(Vs); }
+			if (V.IsValid() && V->Pawn) { FKAPVehicleSave Vs; Vs.Id = V->Id; Vs.Fuel = V->Fuel; Vs.Hp = V->Hp; Vs.State = V->State; Vs.Xf = V->Pawn->GetActorTransform(); Ss.VehicleStates.Add(Vs); }
 		Ss.Weather.Reset();
 	}
 	SyncSessionToWorld();
@@ -449,7 +495,7 @@ void AKAPGameMode::SyncSessionToWorld()
 			if (V.IsValid() && V->Id == Vs.Id)
 			{
 				V->Fuel = Vs.Fuel; V->Hp = Vs.Hp; V->Flats = Vs.Flats; V->State = Vs.State;
-				if (!Vs.Xf.GetLocation().IsNearlyZero()) V->Pawn->SetActorTransform(Vs.Xf, false, nullptr, ETeleportType::TeleportPhysics);
+				if (V->Pawn && !Vs.Xf.GetLocation().IsNearlyZero()) V->Pawn->SetActorTransform(Vs.Xf, false, nullptr, ETeleportType::TeleportPhysics);
 			}
 	if (AKAPStructure* G = Builder->HQGate.Get()) G->SetActorHiddenInGame(Ss.Flags.Contains("gateOpen")), G->SetActorEnableCollision(!Ss.Flags.Contains("gateOpen"));
 	if (AKAPCharacter* P = Player())
@@ -474,7 +520,7 @@ void AKAPGameMode::SyncPlayerToSession()
 	}
 	Ss.VehicleStates.Reset();
 	for (const TWeakObjectPtr<AKAPVehicleHandle>& V : Builder->Vehicles)
-		if (V.IsValid()) { FKAPVehicleSave Vs; Vs.Id = V->Id; Vs.Fuel = V->Fuel; Vs.Hp = V->Hp; Vs.Flats = V->Flats; Vs.State = V->State; Vs.Xf = V->Pawn->GetActorTransform(); Ss.VehicleStates.Add(Vs); }
+		if (V.IsValid() && V->Pawn) { FKAPVehicleSave Vs; Vs.Id = V->Id; Vs.Fuel = V->Fuel; Vs.Hp = V->Hp; Vs.Flats = V->Flats; Vs.State = V->State; Vs.Xf = V->Pawn->GetActorTransform(); Ss.VehicleStates.Add(Vs); }
 }
 
 void AKAPGameMode::Save(bool bAuto)
@@ -1283,7 +1329,7 @@ void AKAPGameMode::SpotUse(AKAPInteractSpot* Sp)
 		Ss.Inv.FindOrAdd("radiator") = 1;
 		UKAPAudio::Get(this)->Play(EKAPSound::Pickup, 0.6f);
 		CompleteQuest("m_radiator"); StartQuest("m_fixuaz");
-		for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "bukhanka") P->Navigator->SetTarget(KAP::CM2M(V->Pawn->GetActorLocation()), TEXT("УАЗ «Буханка»"));
+		for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "bukhanka" && V->Pawn && P && P->Navigator) P->Navigator->SetTarget(KAP::CM2M(V->Pawn->GetActorLocation()), TEXT("УАЗ «Буханка»"));
 		Subtitle(TEXT("Ескі, бірақ жарамды. Енді Буханкаға."), TEXT("Старый, но рабочий. Теперь к «Буханке»."), TEXT("Сіз"), 4);
 	}
 	else if (A.StartsWith(TEXT("crate:"))) OpenCrate(FName(*A.RightChop(6)));
@@ -1691,7 +1737,8 @@ void AKAPGameMode::Intro()
 	const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(To.Y - From.Y, To.X - From.X));
 	V->Pawn->GetMesh()->SetSimulatePhysics(false);
 	AKAPNPC* Hero = SpawnNPC((int32)ENPCKind::Worker, FVector2D(-995, 818), TEXT("Сіз"), true);
-	if (Hero) { Hero->SetActorHiddenInGame(true); Hero->bPersistent = true; CineActors.Add(Hero); }
+	// кейіпкер — тек кинематографиялық «қуыршақ»: соқтығыспайды (әйтпесе көлікке телепорт болғанда физика автобусты лақтырып жібереді)
+	if (Hero) { Hero->SetActorHiddenInGame(true); Hero->bPersistent = true; Hero->SetActorEnableCollision(false); Hero->GetCharacterMovement()->DisableMovement(); CineActors.Add(Hero); }
 	struct FLine { float T; const TCHAR* Kk; const TCHAR* Ru; const TCHAR* Who; };
 	static const FLine Lines[] = {
 		{ 11, TEXT("...ш-ш-ш... QazUran кенішінде апат... жерасты ұңғымаларының бірнешеуі істен шықты..."), TEXT("...ш-ш-ш... авария на руднике QazUran... несколько подземных скважин вышли из строя..."), TEXT("Радио") },
@@ -1750,8 +1797,9 @@ void AKAPGameMode::Intro()
 		{
 			H->SetActorHiddenInGame(false);
 			const float K = Seg(T, 35, 38);
-			const FVector Side = P - Rt * 160, Front = P + Fw * 320;
-			const FVector Hp = FMath::Lerp(Side, Front, K);
+			// бүйірден алдыңғы бұрышты айналып алдына шығады (автобустың ішінен өтпейді)
+			const FVector Side = P - Rt * 160, Corner = P - Rt * 160 + Fw * 320, Front = P + Fw * 320;
+			const FVector Hp = K < 0.5f ? FMath::Lerp(Side, Corner, K * 2.f) : FMath::Lerp(Corner, Front, (K - 0.5f) * 2.f);
 			H->SetActorLocation(FVector(Hp.X, Hp.Y, KAPVis::GroundZ(GetWorld(), Hp.X, Hp.Y, 0) + 92));
 			H->SetActorRotation(FRotator(0, K < 1 ? CurYaw : CurYaw + 180, 0));
 			if (FX && T > 39 && FMath::FRand() < Dt * 25) FX->Spawn(EKAPFX::Steam, P + Fw * 190 + FVector(0, 0, 180), 2.5f);
@@ -1783,7 +1831,14 @@ void AKAPGameMode::Intro()
 		if (V && P && Wg)
 		{
 			V->bAutoPilot = false;
-			if (FVector::Dist2D(V->Pawn->GetActorLocation(), FVector(-99500, 81800, 0)) > 3000.f) V->Pawn->SetActorLocationAndRotation(FVector(-99500, 81800, KAPVis::GroundZ(GetWorld(), -99500, 81800, 0) + 80), FRotator(0, Yaw, 0), false, nullptr, ETeleportType::TeleportPhysics);
+			// автобус орнынан ауып немесе еңкейіп қалса — дөңгелегіне, тоқтау нүктесіне қойылады
+			const FRotator Vr = V->Pawn->GetActorRotation();
+			const bool bTilted = FMath::Abs(Vr.Roll) > 20.f || FMath::Abs(Vr.Pitch) > 20.f;
+			if (bTilted || FVector::Dist2D(V->Pawn->GetActorLocation(), FVector(-99500, 81800, 0)) > 3000.f)
+			{
+				V->Pawn->SetActorLocationAndRotation(FVector(-99500, 81800, KAPVis::GroundZ(GetWorld(), -99500, 81800, 0) + 80), FRotator(0, Yaw, 0), false, nullptr, ETeleportType::ResetPhysics);
+				V->Pawn->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector); V->Pawn->GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+			}
 			V->Pawn->GetMesh()->SetSimulatePhysics(true);
 			const FVector2D Vp = KAP::CM2M(V->Pawn->GetActorLocation()), Wp(Wg->X, Wg->Y);
 			const FVector2D Sp = Vp + (Wp - Vp).GetSafeNormal() * 4.0;
