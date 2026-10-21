@@ -5,6 +5,8 @@
 #include "Components/StaticMeshComponent.h"
 
 class UMaterialInstanceDynamic;
+class UPrimitiveComponent;
+class UMaterialInterface;
 class UTextRenderComponent;
 class UFont;
 
@@ -27,7 +29,7 @@ struct FKAPMat
 	float DustTop = 0.6f; // жоғарғы беттердегі шаң
 	/** Қадам дыбысы үшін беткей: 0 — авто, 1 металл, 2 ағаш, 3 бетон */
 	uint8 Surface = 0;
-	float VarAmt = 0.1f, VarScale = 0.015f, RustScale = 0.006f; // түс дақтарының күші/масштабы, тат масштабы
+	float VarAmt = 0.1f, VarScale = 0.015f, RustScale = 0.013f; // түс дақтарының күші/масштабы, тат масштабы
 	static FKAPMat Paint(FLinearColor C, float R = 0.55f) { FKAPMat M; M.Color = C; M.Roughness = R; return M; }
 	static FKAPMat Metal(FLinearColor C, float R = 0.35f) { FKAPMat M; M.Color = C; M.Roughness = R; M.Metallic = 1.f; return M; }
 	static FKAPMat Glow(FLinearColor C, float Strength) { FKAPMat M; M.Color = C; M.Emissive = C * Strength; M.Grime = 0; M.DustTop = 0; return M; }
@@ -47,6 +49,10 @@ namespace KAPVis
 	KAPSIMULATOR_API UMaterialInterface* TranslucentMaterial();
 	KAPSIMULATOR_API UMaterialInstanceDynamic* MakeMID(UObject* Outer, const FKAPMat& M);
 	KAPSIMULATOR_API void Apply(UMaterialInstanceDynamic* MID, const FKAPMat& M);
+	/** Бөлшектің өз материалы (ортақ болса — көшірмесі жасалады); түсін кейін өзгертетін бөлшектерге */
+	KAPSIMULATOR_API UMaterialInstanceDynamic* UniqueMID(UPrimitiveComponent* C);
+	/** Бірдей параметрлі бөлшектер бөлісетін материал */
+	KAPSIMULATOR_API UMaterialInterface* SharedMaterial(const FKAPMat& M);
 	/** Пішін қосу. Pos, Size — сантиметрмен (Size — толық өлшем). */
 	KAPSIMULATOR_API UStaticMeshComponent* Add(AActor* Owner, USceneComponent* Parent, EKAPShape S, FVector Pos, FVector Size, const FKAPMat& M, FRotator Rot = FRotator::ZeroRotator, bool bCollision = true);
 	/** Жер биіктігі (ландшафт бойынша сызық) — см */

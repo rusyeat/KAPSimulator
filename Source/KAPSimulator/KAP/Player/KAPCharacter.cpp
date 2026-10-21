@@ -49,10 +49,10 @@ AKAPCharacter::AKAPCharacter()
 	Flashlight->SetRelativeLocation(FVector(10, 15, -10));
 	Flashlight->SetIntensityUnits(ELightUnits::Candelas);
 	Flashlight->SetIntensity(0.f);
-	Flashlight->SetVolumetricScatteringIntensity(0.3f);
+	Flashlight->SetVolumetricScatteringIntensity(2.2f); // шаң/тұманда көрінетін сәуле
 	Flashlight->SetCastShadows(true);
 	Flashlight->bCastVolumetricShadow = true;
-	Flashlight->SetOuterConeAngle(30.f); Flashlight->SetInnerConeAngle(11.f);
+	Flashlight->SetOuterConeAngle(31.f); Flashlight->SetInnerConeAngle(15.f); Flashlight->SetSourceRadius(2.f); Flashlight->SetSoftSourceRadius(4.f);
 	Flashlight->SetAttenuationRadius(3500.f);
 	Flashlight->SetLightColor(FLinearColor(1.f, 0.95f, 0.85f));
 	HeldRoot = CreateDefaultSubobject<USceneComponent>("HeldRoot");
@@ -106,7 +106,7 @@ void AKAPCharacter::DoJump()
 }
 void AKAPCharacter::ToggleFlashlight()
 {
-	Flashlight->SetIntensity(Flashlight->Intensity > 0 ? 0.f : 1800.f);
+	Flashlight->SetIntensity(Flashlight->Intensity > 0 ? 0.f : 800.f);
 	if (UKAPAudio* A = UKAPAudio::Get(this)) A->Foley(0);
 	UKAPAudio::Get(this)->Beep(true);
 }

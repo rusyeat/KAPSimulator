@@ -67,6 +67,17 @@ void AKAPNPC::BeginPlay()
 {
 	Super::BeginPlay();
 	LastPos = GetActorLocation();
+	// көрінбейтін (артта, қабырға сыртында) NPC анимациясы есептелмейді; кішкентай көрінсе — сиректеу
+	if (USkeletalMeshComponent* SK = GetMesh())
+	{
+		SK->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+		SK->bEnableUpdateRateOptimizations = true;
+		// тірі кезде қаңқа физикасы керек емес (оқ капсулаға тиеді); өлгенде Kill() рагдоллды қосады.
+		// Әйтпесе 157 NPC × ~23 буын = 3600 физика буыны әр кадр сайын синхрондалады
+		SK->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		// жылжымалы қаңқа сәуле трассировкасына енбейді (әр кадр BLAS жаңарту — қымбат)
+		SK->SetVisibleInRayTracing(false);
+	}
 	KAPReg::Add(KAPReg::NPCs(), this);
 	KAPReg::Add(KAPReg::Interactables(), (AActor*)this);
 }
@@ -97,7 +108,14 @@ void AKAPNPC::Setup(ENPCKind InKind, const FString& InName, float Scale, bool bI
 	Kind = InKind; DisplayName = InName; bBoss = bInBoss;
 	Home = KAP::CM2M(GetActorLocation());
 	USkeletalMeshComponent* SK = GetMesh();
-	bFemale = InKind == ENPCKind::Mother || (InKind == ENPCKind::Villager && FMath::FRand() < 0.5f);
+	bFemale = InKind == ENPCKind::Mother || InKind == ENPCKind::Girl || (InKind == ENPCKind::Villager && FMath::FRand() < 0.5f);
+	if (IsChild())
+	{
+		Scale *= 0.67f;
+		WalkSpeed = 150.f; RunSpeed = 260.f; WanderR = 4.f;
+		bSick = InKind == ENPCKind::SickChild;
+		if (bSick) WanderR = 0.f;
+	}
 	switch (InKind)
 	{
 	case ENPCKind::Worker: Faction = EKAPFaction::Worker; break;
@@ -517,8 +535,8 @@ void AKAPNPC::Tick(float Dt)
 		return;
 	}
 	if (DistP > 450 && !bPersistent) { Destroy(); return; }
-	if (DistP > 260 && bPersistent) { SetActorTickInterval(0.5f); return; }
-	SetActorTickInterval(0.f);
+	UpdateLod(DistP);
+	if (LodTier >= 3) return; // өте алыс: AI тоқтап тұрады, тек қашықтық тексеріледі
 	if (GM->bCinematic) return;
 	if (bStalker) { StalkerTick(Dt, PC, DistP); return; }
 	SoundTick(Dt, DistP);
@@ -550,6 +568,51 @@ void AKAPNPC::Tick(float Dt)
 			Parts[i]->SetRelativeLocation(FVector(-i * 65.f, FMath::Sin(AnimT * 0.7f - i) * 20.f, -140.f * (1 - Rise) + Rise * (110 - i * 22) + FMath::Sin(AnimT - i * 0.8f) * 18.f));
 	if (Kind == ENPCKind::Worm && Rise < 0.5f && GetVelocity().Size2D() > 100 && FMath::FRand() < Dt * 8)
 		if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Dust, GetActorLocation() - FVector(0, 0, 50), 1.5f);
+}
+
+void AKAPNPC::UpdateLod(float DistP)
+{
+	// қашықтық деңгейі; шекарада 8 м гистерезис (жыпылықтамасын)
+	auto TierAt = [](float D) { return D < 60.f ? 0 : D < 150.f ? 1 : D < 260.f ? 2 : 3; };
+	int32 Want = TierAt(DistP);
+	if (LodTier >= 0)
+	{
+		if (Want > LodTier) Want = FMath::Max((int32)LodTier, TierAt(DistP - 8.f));
+		else if (Want < LodTier) Want = FMath::Min((int32)LodTier, TierAt(DistP + 8.f));
+	}
+	// тапсырмадағы, ұрыстағы, ерекше NPC тоқтамасын
+	if (GoTo.IsSet() || Task != ENPCTask::None || bFollowPlayer || bBoss) Want = FMath::Min(Want, 2);
+	if (bStalker || Aggro > 0 || Alerted > 0 || Target.IsValid()) Want = FMath::Min(Want, 1);
+	if (Want == LodTier) return;
+	if (LodTier < 0)
+	{
+		// бір рет: киім/құрал бөлшектері сәуле трассировкасына, қашықтық өрісі жарығына қатыспайды (қозғалады — жаңарту қымбат)
+		TArray<UStaticMeshComponent*> Sm; GetComponents(Sm);
+		for (UStaticMeshComponent* C : Sm) { C->SetVisibleInRayTracing(false); C->SetAffectDistanceFieldLighting(false); }
+	}
+	// көлеңке: дене — 150 м дейін, ұсақ бөлшектер — 60 м дейін (VSM кэші әр қозғалыста бұзылады)
+	if (USkeletalMeshComponent* SK = GetMesh()) if (SK->CastShadow != (Want <= 1)) SK->SetCastShadow(Want <= 1);
+	{
+		TArray<UStaticMeshComponent*> Sm; GetComponents(Sm);
+		for (UStaticMeshComponent* C : Sm) if (C->GetAttachParent() == GetMesh() && C->Bounds.SphereRadius > 6.f) { const bool bSh = Want == 0 && C->Bounds.SphereRadius > 10.f; if (C->CastShadow != bSh) C->SetCastShadow(bSh); }
+	}
+	LodTier = (int8)Want;
+	static const float ActorIv[4] = { 0.f, 0.1f, 0.25f, 0.5f };
+	static const float MoveIv[4] = { 0.f, 0.033f, 0.2f, 0.f };
+	static const float MeshIv[4] = { 0.f, 0.05f, 0.2f, 0.f };
+	SetActorTickInterval(ActorIv[Want]);
+	if (UCharacterMovementComponent* M = GetCharacterMovement())
+	{
+		M->SetComponentTickEnabled(Want < 3);
+		M->SetComponentTickInterval(MoveIv[Want]);
+		M->MaxSimulationTimeStep = Want >= 2 ? 0.2f : 0.05f;
+		M->MaxSimulationIterations = Want >= 2 ? 2 : 8;
+	}
+	if (USkeletalMeshComponent* SK = GetMesh())
+	{
+		SK->SetComponentTickEnabled(Want < 3);
+		SK->SetComponentTickInterval(MeshIv[Want]);
+	}
 }
 
 void AKAPNPC::CivilAI(float Dt)

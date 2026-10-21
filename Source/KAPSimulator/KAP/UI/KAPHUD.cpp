@@ -160,20 +160,22 @@ bool AKAPHUD::Button(float X, float Y, float W, float H, const FString& Label, T
 void AKAPHUD::AddToast(const FString& Msg, FName Kind) { Toasts.Insert({ Msg, Kind, 7.f }, 0); if (Toasts.Num() > 6) Toasts.SetNum(6); }
 void AKAPHUD::SetSubtitle(const FString& Kk, const FString& Ru, const FString& Who, float Dur) { SubKk = Kk; SubRu = Ru; SubWho = Who; SubT = Dur; }
 void AKAPHUD::ShowDialog(const FString& Name, const FString& Text, TArray<FKAPDialogOption> Opts) { bDialog = true; DName = Name; DText = Text; DOpts = MoveTemp(Opts); }
-void AKAPHUD::ToggleTablet() { bTablet = !bTablet; TabletScroll = 0; }
-void AKAPHUD::CloseAll() { bTablet = false; bDialog = false; bShop = false; bJobs = false; if (MG.bActive) MGFinish(false); }
+void AKAPHUD::ToggleTablet() { bTablet = !bTablet; TabletScroll = 0; bMapCentered = false; }
+void AKAPHUD::CloseAll() { bTablet = false; bMap = false; bMapDrag = false; bDialog = false; bShop = false; bJobs = false; if (MG.bActive) MGFinish(false); }
 bool AKAPHUD::IsModal() const
 {
 	const AKAPGameMode* GM = AKAPGameMode::Get(this);
-	return bTablet || bDialog || bShop || bJobs || MG.bActive || (GM && (GM->bInMenu || GM->bPaused || GM->bPlayerDead || GM->bCredits));
+	return bTablet || bMap || bDialog || bShop || bJobs || MG.bActive || (GM && (GM->bInMenu || GM->bPaused || GM->bPlayerDead || GM->bCredits));
 }
 
 void AKAPHUD::Click(FVector2D Pos, bool bDown)
 {
 	bMouseDown = bDown;
-	if (!bDown) { if (MG.bActive && MG.Kind == TEXT("wires") && MG.Drag >= 0) MG.T = -1; return; } // жіптерді жіберу
+	if (!bDown) { MapRelease(); if (MG.bActive && MG.Kind == TEXT("wires") && MG.Drag >= 0) MG.T = -1; return; } // жіптерді жіберу
 	const FVector2D P = Pos / Sc;
 	for (int32 i = Btns.Num() - 1; i >= 0; i--) if (Btns[i].R.IsInside(P)) { TFunction<void()> F = Btns[i].Fn; UKAPAudio* A = UKAPAudio::Get(this); if (A) A->Play(EKAPSound::Beep, 0.15f); F(); return; }
+	// карта: сүйреу басталады (жібергенде қозғалмаса — белгі қойылады)
+	if ((bMap || (bTablet && Tab == 2)) && MapView.bIsValid && MapView.IsInside(P)) { bMapDrag = true; MapDragStart = P; MapDragCenter = MapCenter; Mouse = P; }
 }
 
 bool AKAPHUD::HandleKey(FName K, bool bDown)
@@ -186,6 +188,12 @@ bool AKAPHUD::HandleKey(FName K, bool bDown)
 	if (GM->bCredits) { if (K == "Pause" || K == "Enter") UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this))); return true; }
 	if (GM->bInMenu) { if (K == "Enter") GM->MenuNewGame(); return true; }
 	if (MG.bActive) { if (K == "Pause") MGFinish(false); return true; }
+	if (bMap)
+	{
+		if (K == "Map" || K == "Pause" || K == "Tablet") { bMap = false; bMapDrag = false; }
+		else if (K == "Aim") if (AKAPCharacter* Pc = AKAPCharacter::Get(this)) if (Pc->Navigator) Pc->Navigator->Clear();
+		return true;
+	}
 	if (bShop || bJobs) { if (K == "Pause" || K == "Tablet") { bShop = false; bJobs = false; } return true; }
 	if (bDialog)
 	{
@@ -197,7 +205,7 @@ bool AKAPHUD::HandleKey(FName K, bool bDown)
 		}
 		return true;
 	}
-	if (bTablet) { if (K == "Tablet" || K == "Pause") bTablet = false; return true; }
+	if (bTablet) { if (K == "Tablet" || K == "Pause") bTablet = false; else if (K == "Map") ToggleMap(); return true; }
 	if (GM->bPlayerDead) { if (K == "Enter") GM->RespawnPlayer(); return true; }
 	if (GM->bPaused) { if (K == "Pause") GM->bPaused = false; return true; }
 	return false;
@@ -234,6 +242,9 @@ void AKAPHUD::DrawHUD()
 		DrawToasts(Dt);
 		DrawSubtitle(Dt);
 		if (bTablet) DrawTablet();
+		if (bMap) DrawFullMap();
+		// картаны алдын ала түсіріп қою (бірінші ашқанда кідіріс болмасын)
+		else if (!MapTex && !bMapCaptureTried && GM->Builder && GetWorld()->GetRealTimeSeconds() > 3.0) MapTexture();
 		if (bDialog) DrawDialog();
 		if (bShop) DrawShop();
 		if (bJobs) DrawJobs();
@@ -592,7 +603,7 @@ void AKAPHUD::DrawTablet()
 	{
 		const FString L = Tabs[i] + FString((i == 8 && !S.bBrigadesUnlocked) ? TEXT(" (жабық)") : TEXT(""));
 		const float Tw = Measure(L, 14).X + 26;
-		Button(Tx, Y + 46, Tw, 32, L, [this, i]() { Tab = i; TabletScroll = 0; }, true, Tab == i, 14);
+		Button(Tx, Y + 46, Tw, 32, L, [this, i]() { Tab = i; TabletScroll = 0; bMapCentered = false; }, true, Tab == i, 14);
 		Tx += Tw + 4;
 	}
 	const float CX = X + 16, CY = Y + 92, CW = W - 32, CH = H - 104;
@@ -736,6 +747,8 @@ void AKAPHUD::TabWorkers(float X, float Y, float W, float H)
 UTexture2D* AKAPHUD::MapTexture()
 {
 	if (MapTex) return MapTex;
+	if (!bMapCaptureTried) { bMapCaptureTried = true; MapTex = CaptureWorldMap(); if (MapTex) return MapTex; }
+	// қосалқы: түсіру сәтсіз болса — биіктік бойынша қарапайым карта
 	const int32 N = 200;
 	MapTex = UTexture2D::CreateTransient(N, N, PF_B8G8R8A8);
 	if (!MapTex) return nullptr;
@@ -761,51 +774,10 @@ void AKAPHUD::TabMap(float X, float Y, float W, float H)
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	const UWellManagerSubsystem* WM = GetWorld()->GetSubsystem<UWellManagerSubsystem>();
 	UNavigatorComponent* Nav = P->Navigator;
-	const float M = FMath::Min(H, W * 0.6f), Sm = M / 2400.f;
-	auto To = [&](FVector2D Wp) { return FVector2D(X + (Wp.X + 1200) * Sm, Y + (Wp.Y + 1200) * Sm); };
-	if (UTexture2D* T = MapTexture()) { FCanvasTileItem It(FVector2D(X, Y) * Sc, T->GetResource(), FVector2D(M, M) * Sc, FLinearColor::White); Canvas->DrawItem(It); }
-	else Rect(X, Y, M, M, FLinearColor(0.55f, 0.45f, 0.3f));
-	// карта басу — нысана таңдау
-	Btns.Add({ FBox2D(FVector2D(X, Y), FVector2D(X + M, Y + M)), [this, X, Y, Sm, Nav, D, GM]()
-	{
-		const FVector2D Wp((Mouse.X - X) / Sm - 1200, (Mouse.Y - Y) / Sm - 1200);
-		if (!GM->S().Regions[KAP::RegionOf(Wp.X, Wp.Y)]) { GM->Toast(TEXT("Бұл аймақ әлі ашылмаған"), "warn"); return; }
-		const int32 N = D->Graph.Nearest(Wp);
-		const bool bNode = N >= 0 && FVector2D::Distance(D->Graph.Nodes[N].Pos, Wp) < 40;
-		Nav->SetTarget(bNode ? D->Graph.Nodes[N].Pos : Wp, bNode ? D->Graph.Nodes[N].Name : FString::Printf(TEXT("Белгі (%d, %d)"), (int32)Wp.X, (int32)Wp.Y));
-	} });
-	for (const KAPAI::FRoadEdge& E : D->Graph.Edges) Line(To(D->Graph.Nodes[E.A].Pos), To(D->Graph.Nodes[E.B].Pos), FLinearColor(0.42f, 0.33f, 0.2f), 2.5f);
-	if (bLayerDanger) for (const FKAPDangerZone& Z : GM->Zones) { Disc(To(Z.P), Z.R * Sm, FLinearColor(1, 0.15f, 0.1f, 0.1f + Z.Level * 0.18f)); }
-	if (bLayerHeat && GM->bHeatActive)
-	{
-		float Mx = 0; for (float V : GM->Heat) Mx = FMath::Max(Mx, V);
-		if (Mx > 0) for (int32 J = 0; J < 64; J++) for (int32 I = 0; I < 64; I++) { const float V = GM->Heat[J * 64 + I] / Mx; if (V < 0.03f) continue; Rect(X + I * 37.5f * Sm, Y + J * 37.5f * Sm, 37.5f * Sm + 0.5f, 37.5f * Sm + 0.5f, FLinearColor(1, 0.7f - V * 0.7f, 0, 0.2f + V * 0.6f)); }
-	}
+	const float M = FMath::Min(H, W * 0.6f);
+	// нақты карта (масштаб, сүйреу, белгішелер, кеңес) — KAPHUDMap.cpp
+	DrawWorldMap(X, Y, M, M, false);
 	const FLinearColor RC[3] = { FLinearColor(0.3f, 0.88f, 0.54f), CBlue, CYel };
-	for (int32 m = 2; m >= 0; m--)
-	{
-		const KAPAI::FRoute& R = Nav->Routes[m];
-		if (!Nav->bHasTarget || !R.bValid) continue;
-		for (int32 i = 1; i < R.Points.Num(); i++) Line(To(R.Points[i - 1]), To(R.Points[i]), RC[m], (int32)Nav->Mode == m ? 4.f : 1.5f);
-	}
-	D->Locations->ForeachRow<FKAPLocationRow>(TEXT("KAP"), [&](const FName& Id, const FKAPLocationRow& L)
-	{
-		if (L.Type == "nest") return;
-		const FVector2D Pp = To(FVector2D(L.X, L.Y));
-		const FLinearColor C = L.Type == "village" ? Amber : L.Type == "ruins" ? CRed : L.Type == "hq" ? CBlue : L.Type == "bandit" ? CRed : L.Type == "police" ? CBlue : L.Type == "shop" ? CGreen : L.Type == "army" ? COrange : Txtc;
-		Rect(Pp.X - 3, Pp.Y - 3, 6, 6, C);
-		if (L.Type == "village" || L.Type == "hq" || L.Type == "ruins" || L.Type == "bandit" || L.Type == "reservoir" || L.Type == "police" || L.Type == "shop" || L.Type == "army") Txt(Pp.X + 6, Pp.Y - 8, L.Title, 11, C);
-		if (L.Type == "army") Frame(Pp.X - 62 * Sm, Pp.Y - 47 * Sm, 124 * Sm, 94 * Sm, COrange, 1.5f);
-		if (L.Type == "tower") Txt(Pp.X + 6, Pp.Y - 8, S.Towers.Contains(Id) ? TEXT("мұнара ✓") : TEXT("мұнара"), 10, Txtc);
-	});
-	for (int32 i = 0; i < WM->Wells.Num(); i++) { const FVector2D Pp = To(WM->Wells[i].PosM()); Disc(Pp, 7, StateCol(S.Wells[i].State)); Txt(Pp.X, Pp.Y - 7, FString::FromInt(i + 1), 9, FLinearColor::Black, 1, false); }
-	if (S.bBrigadesUnlocked) for (const FKAPBrigadeState& B : S.Brigades) { const FVector2D Pp = To(B.Pos); Rect(Pp.X - 4, Pp.Y - 4, 8, 8, FLinearColor(0.76f, 0.55f, 1.f)); }
-	const FVector2D Quad[4] = { FVector2D(0, 0.5f), FVector2D(0.5f, 0.5f), FVector2D(0.5f, 0), FVector2D(0, 0) };
-	for (int32 r = 0; r < 4; r++) if (!S.Regions[r]) { Rect(X + Quad[r].X * M, Y + Quad[r].Y * M, M / 2, M / 2, FLinearColor(0, 0, 0, 0.82f)); Txt(X + (Quad[r].X + 0.25f) * M, Y + (Quad[r].Y + 0.24f) * M, KAP::RegionName(r).ToString() + TEXT(" — ашылмаған"), 13, Muted, 1); }
-	Line(FVector2D(X + M / 2, Y), FVector2D(X + M / 2, Y + M), FLinearColor(1, 1, 1, 0.25f), 1); Line(FVector2D(X, Y + M / 2), FVector2D(X + M, Y + M / 2), FLinearColor(1, 1, 1, 0.25f), 1);
-	const FVector2D Pp = To(KAP::CM2M(P->GetActorLocation()));
-	Disc(Pp, 6, FLinearColor::White);
-	if (Nav->bHasTarget) Circle(To(Nav->Target), 9, RC[0], 2);
 	// оң жақ панель
 	const float PX = X + M + 20, PW = W - M - 20;
 	float Py = Y;
@@ -1116,7 +1088,7 @@ void AKAPHUD::TabSys(float X, float Y, float W, float H)
 		Bx += Bw + 6;
 	}
 	Py += 60;
-	Para(X, Py, W * 0.7f, TEXT("Басқару: WASD · Shift · Space · E — әрекет · Tab — планшет · 1–9 — құрал · R — оқтау · F — фонарь · H/J/K — аптечка/су/тамақ · көлікте V — камера, E — түсу · Esc — үзіліс"), 13, Muted);
+	Para(X, Py, W * 0.7f, TEXT("Басқару: WASD · Shift · Space · E — әрекет · Tab — планшет · M — карта · 1–9 — құрал · R — оқтау · F — фонарь · H/J/K — аптечка/су/тамақ · көлікте V — камера, E — түсу · Esc — үзіліс"), 13, Muted);
 }
 
 // ---------------- мини-ойындар ----------------

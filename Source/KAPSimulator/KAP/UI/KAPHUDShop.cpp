@@ -260,7 +260,7 @@ void AKAPHUD::DrawMenu()
 			FCanvasUVTri A; A.V0_Pos = P00; A.V1_Pos = P10; A.V2_Pos = P01; A.V0_Color = C0; A.V1_Color = C1; A.V2_Color = C0; G.Add(A);
 			FCanvasUVTri B; B.V0_Pos = P10; B.V1_Pos = P11; B.V2_Pos = P01; B.V0_Color = C1; B.V1_Color = C1; B.V2_Color = C0; G.Add(B);
 		};
-		Quad(0, VW * 0.3f, 0.9f, 0.7f); Quad(VW * 0.3f, VW * 0.5f, 0.7f, 0.3f); Quad(VW * 0.5f, VW * 0.72f, 0.3f, 0.f);
+		Quad(0, VW * 0.26f, 0.82f, 0.55f); Quad(VW * 0.26f, VW * 0.44f, 0.55f, 0.15f); Quad(VW * 0.44f, VW * 0.62f, 0.15f, 0.f);
 		FCanvasTriangleItem TI(G, GWhiteTexture); TI.BlendMode = SE_BLEND_Translucent; Canvas->DrawItem(TI);
 	}
 	Rect(0, 0, VW, 54, FLinearColor(0, 0, 0, 0.35f)); Rect(0, 1026, VW, 54, FLinearColor(0, 0, 0, 0.5f));
@@ -297,7 +297,7 @@ void AKAPHUD::DrawMenu()
 	const float NA = FMath::Clamp(FMath::Min(Fr * 4.f, (1.f - Fr) * 4.f), 0.f, 1.f);
 	if (!bSettings && !bHelp)
 	{
-		const float Rx = VW - 560, Ry = 820;
+		const float Rx = 298, Ry = 772; // сол жақта, мәзірдің астында (оң жақта — сахнадағы инженер)
 		Rect(Rx, Ry, 520, 120, FLinearColor(0.04f, 0.035f, 0.03f, 0.7f)); Rect(Rx, Ry, 4, 120, CRed);
 		Disc(FVector2D(Rx + 28, Ry + 26), 5, FLinearColor(1, 0.2f, 0.15f, 0.5f + 0.5f * FMath::Sin(T * 5.f)));
 		Txt(Rx + 42, Ry + 15, TEXT("РАДИО · 103.2 FM"), 14, CRed);
@@ -308,7 +308,7 @@ void AKAPHUD::DrawMenu()
 		const float Px = VW * 0.55f, Py = 380;
 		Rect(Px, Py, 620, 420, FLinearColor(0.04f, 0.035f, 0.03f, 0.85f)); Rect(Px, Py, 4, 420, Amber);
 		Txt(Px + 26, Py + 18, TEXT("БАСҚАРУ"), 22, Amber);
-		Para(Px + 26, Py + 60, 570, TEXT("WASD — жүру · Shift — жүгіру · Space — секіру\nТышқан — қарау · СТБ — ату/соғу · ОТБ — нысана\nE — әрекет (есік, пульт, көлік, сөйлесу) · R — оқтау\nF — фонарь · H — аптечка · J — су · K — тамақ\n1–9 — қару · Tab — планшет · Q — көрсеткіштер мен әмиян\nКөлікте: W/S — газ/тежеу · A/D — руль · Space — қол тежегіш · V — камера\nEsc — үзіліс · F9 — уақыт жылдамдығы"), 16, Txtc);
+		Para(Px + 26, Py + 60, 570, TEXT("WASD — жүру · Shift — жүгіру · Space — секіру\nТышқан — қарау · СТБ — ату/соғу · ОТБ — нысана\nE — әрекет (есік, пульт, көлік, сөйлесу) · R — оқтау\nF — фонарь · H — аптечка · J — су · K — тамақ\n1–9 — қару · Tab — планшет · M — карта · Q — көрсеткіштер мен әмиян\nКөлікте: W/S — газ/тежеу · A/D — руль · Space — қол тежегіш · V — камера\nEsc — үзіліс · F9 — уақыт жылдамдығы"), 16, Txtc);
 	}
 	if (bSettings) DrawSettings(VW * 0.55f, 380);
 	// төменгі ақпарат

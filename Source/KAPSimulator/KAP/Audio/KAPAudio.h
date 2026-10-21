@@ -36,6 +36,8 @@ public:
 private:
 	float Lp = 0, Lp2 = 0, Phase = 0, ChirpPh = 0, ModPh = 0, ClickEnv = 0, NextClick = 0, Sub = 0, SkipEnv = 1, SvL = 0, SvB = 0, ResCur = 500; int32 SampleN = 0;
 	float Ph7[6] = { 0, 0, 0, 0, 0, 0 }; float Lp7 = 0, Lp7b = 0, Int7 = 0;
+	/** Гейгер: нақты жазылған шертпелердің қатар ойнайтын 4 дауысы (KAPGeigerClicks.inl) */
+	int32 ClkPos[4] = { -1, -1, -1, -1 }, ClkIdx[4] = { 0, 0, 0, 0 };
 	uint32 Seed = 12345;
 };
 
@@ -125,7 +127,11 @@ public:
 	class USoundAttenuation* Atten();
 	/** Алыс дыбыстар (90 м дейін), LPF-пен */
 	class USoundAttenuation* AttenFar();
-	void Footstep(FVector Loc, int32 Surface, float Vol = 0.6f);
+	void Footstep(FVector Loc, int32 Surface, float Vol = 0.6f, bool bRun = false);
+	/** Секіріп/құлап жерге түсу (Strength 0..1) */
+	void Land(FVector Loc, int32 Surface, float Strength);
+	/** Дизель генераторының гулі (тұйық цикл, 3D) — нүктеге тіркеледі */
+	UAudioComponent* AttachGenerator(USceneComponent* To, FVector Offset, float Vol = 1.f);
 	/** Жоқтау әуені (финал); ұзақтығын (сек) қайтарады */
 	float Lament();
 	void StopLoops();

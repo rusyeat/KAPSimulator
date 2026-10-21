@@ -53,7 +53,7 @@ void AKAPPlayerController::SetupInputComponent()
 	IMC->MapKey(FireA, EKeys::LeftMouseButton);
 	struct FK { FName N; FKey K; };
 	const TArray<FK> Keys = {
-		{ "Aim", EKeys::RightMouseButton }, { "Jump", EKeys::SpaceBar }, { "Sprint", EKeys::LeftShift }, { "Interact", EKeys::E }, { "Tablet", EKeys::Tab },
+		{ "Aim", EKeys::RightMouseButton }, { "Jump", EKeys::SpaceBar }, { "Sprint", EKeys::LeftShift }, { "Interact", EKeys::E }, { "Tablet", EKeys::Tab }, { "Map", EKeys::M },
 		{ "Pause", EKeys::Escape }, { "Reload", EKeys::R }, { "Flash", EKeys::F }, { "Med", EKeys::H }, { "Drink", EKeys::J }, { "Eat", EKeys::K },
 		{ "Cam", EKeys::V }, { "Time", EKeys::F9 }, { "Enter", EKeys::Enter }, { "Status", EKeys::Q },
 		{ "S1", EKeys::One }, { "S2", EKeys::Two }, { "S3", EKeys::Three }, { "S4", EKeys::Four }, { "S5", EKeys::Five }, { "S6", EKeys::Six }, { "S7", EKeys::Seven }, { "S8", EKeys::Eight }, { "S9", EKeys::Nine } };
@@ -149,6 +149,7 @@ void AKAPPlayerController::OnKey(FName K)
 	if (H->HandleKey(K, true)) return; // мәзір, диалог, мини-ойын, планшет
 	if (GM->bCinematic) { if (K == "Enter" || K == "Jump" || K == "Pause") GM->SkipCinematic(); return; }
 	if (K == "Pause") { GM->bPaused = !GM->bPaused; return; }
+	if (K == "Map") { H->ToggleMap(); return; }
 	if (K == "Tablet")
 	{
 		if (GM->S().bHasTablet) H->ToggleTablet(); else GM->Toast(TEXT("Планшет әлі жоқ"), "warn");

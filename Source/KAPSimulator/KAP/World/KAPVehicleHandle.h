@@ -40,6 +40,9 @@ public:
 	/** Фаралар мәжбүрлі (кіріспе) */
 	bool bLightsForced = false;
 private:
+	/** Өнімділік: тұрған, алыстағы көліктің физикасы мен дөңгелек есебі ұйықтайды */
+	bool bSleeping = false;
+	void SetSleeping(bool bSleep);
 	/** Шаблон көлігінің рамасын жасырып, нақты дөңгелек орындарына сай корпус құрастыру (KAPVehicleBody.cpp) */
 	void BuildBody();
 	/** Тегіс корпус мештері (SM_KAP_Veh_*) болса — солармен құрастыру (KAPVehicleShell.cpp); болмаса false */

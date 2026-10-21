@@ -716,6 +716,50 @@ void AKAPGameMode::BuildEconomyPlaces()
 		// ережелер тақтасы
 		Builder->SpawnSpot("army_board", At(C + FVector2D(-Hx - 9, 7), 120), 260);
 	}
+	// ---------------- дизель генераторлары (меш + нақты жазылған гул): баспаналар, күзет, басқарма, полиция, әскер ----------------
+	{
+		FRandomStream Gr(4242);
+		auto Gen = [&](FVector2D P, float Yaw)
+		{
+			AActor* A = SpawnProp(W, At(P), Yaw);
+			if (!A) return;
+			USceneComponent* R = A->GetRootComponent();
+			const FKAPMat Steel = FKAPMat::RustySteel(FLinearColor(0.22f, 0.22f, 0.21f), 0.55f);
+			FKAPMat Body = FKAPMat::Paint(FLinearColor(0.62f, 0.45f, 0.06f), 0.6f); Body.Grime = 0.8f; Body.Rust = 0.25f;
+			FKAPMat Alt = FKAPMat::Paint(FLinearColor(0.12f, 0.2f, 0.12f), 0.55f); Alt.Grime = 0.7f;
+			FKAPMat Tank = FKAPMat::Paint(FLinearColor(0.35f, 0.05f, 0.03f), 0.6f); Tank.Grime = 0.75f; Tank.Rust = 0.3f;
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(0, -36, 5), FVector(175, 9, 10), Steel, FRotator::ZeroRotator, true);
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(0, 36, 5), FVector(175, 9, 10), Steel, FRotator::ZeroRotator, true);
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(0, 0, 20), FVector(160, 66, 22), Tank, FRotator::ZeroRotator, true);   // жанармай багы (рама)
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(-28, 0, 62), FVector(78, 56, 60), Body, FRotator::ZeroRotator, true);   // қозғалтқыш
+			KAPVis::Add(A, R, EKAPShape::Cylinder, FVector(42, 0, 58), FVector(48, 48, 56), Alt, FRotator(90, 0, 0), true);   // генератор
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(-72, 0, 62), FVector(10, 50, 50), Steel, FRotator::ZeroRotator, false); // радиатор торы
+			KAPVis::Add(A, R, EKAPShape::Cylinder, FVector(-40, 18, 112), FVector(9, 9, 46), Steel, FRotator::ZeroRotator, false); // түтін құбыры
+			KAPVis::Add(A, R, EKAPShape::Cylinder, FVector(-40, 18, 92), FVector(16, 16, 22), Steel, FRotator::ZeroRotator, false); // бәсеңдеткіш
+			KAPVis::Add(A, R, EKAPShape::Cube, FVector(78, 0, 62), FVector(14, 30, 34), FKAPMat::Paint(FLinearColor(0.3f, 0.3f, 0.3f), 0.5f), FRotator::ZeroRotator, false); // басқару қорабы
+			KAPVis::Add(A, R, EKAPShape::Sphere, FVector(86, 8, 70), FVector(4, 4, 4), FKAPMat::Glow(FLinearColor(0.2f, 1.f, 0.3f), 20), FRotator::ZeroRotator, false);
+			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->AttachGenerator(R, FVector(0, 0, 60), 0.9f);
+		};
+		// жолдан, ғимараттан аулақ бос орын
+		auto Free = [&](FVector2D C, float R0)
+		{
+			for (int32 k = 0; k < 12; k++)
+			{
+				const float A = k * UE_TWO_PI / 12.f + 0.6f;
+				const FVector2D Q = C + FVector2D(FMath::Cos(A), FMath::Sin(A)) * R0;
+				if (DistToRoad(Q) > 6.0) return Q;
+			}
+			return C + FVector2D(R0, 0);
+		};
+		for (FName Id : { FName("wagon0"), FName("wagon1"), FName("wagon2"), FName("wagon3"), FName("guard1"), FName("hq") })
+		{
+			FVector2D Cp = LocOf(this, Id);
+			if (TWeakObjectPtr<AKAPStructure>* S = Builder->Places.Find(Id)) if (S->IsValid()) Cp = KAP::CM2M((*S)->GetActorLocation());
+			Gen(Free(Cp, Id == "hq" ? 30.f : 8.5f), Gr.FRandRange(0.f, 360.f));
+		}
+		Gen(Free(LocOf(this, "police"), 14.f), 0.f);
+		if (bArmyBuilt) Gen(ArmyC + FVector2D(22, -24), 90.f);
+	}
 }
 
 void AKAPGameMode::SpawnEconomyNPCs()

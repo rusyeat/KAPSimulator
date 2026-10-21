@@ -26,6 +26,9 @@ AWeatherManager::AWeatherManager()
 	Sun->bUseTemperature = true;
 	Sun->Temperature = 5900.f;
 	Sun->ForwardShadingPriority = 1;
+	// таң/кеште шаң арқылы күн сәулесінің «бағаналары» (экрандық, арзан)
+	Sun->bEnableLightShaftBloom = true; Sun->BloomScale = 0.12f; Sun->BloomThreshold = 6.f;
+	Sun->bEnableLightShaftOcclusion = true; Sun->OcclusionMaskDarkness = 0.35f;
 
 	Moon = CreateDefaultSubobject<UDirectionalLightComponent>("Moon");
 	Moon->SetupAttachment(RootComponent);
@@ -35,6 +38,8 @@ AWeatherManager::AWeatherManager()
 	Moon->SetIntensity(0.25f);
 	Moon->SetLightColor(FLinearColor(0.55f, 0.65f, 1.f));
 	Moon->SetCastShadows(false);
+	// ай дискі: күңгірт, кішкентай (жарқырауы «көпіршік» болып жайылмасын)
+	Moon->SetAtmosphereSunDiskColorScale(FLinearColor(0.12f, 0.13f, 0.16f));
 	Moon->ForwardShadingPriority = 0;
 
 	Atmosphere = CreateDefaultSubobject<USkyAtmosphereComponent>("Atmosphere");
@@ -116,7 +121,7 @@ void AWeatherManager::UpdateEnv(FKAPSession& S, float Dt, double Dh)
 	if (bOverride) { Cur = OverrideType; }
 	else if (const FKAPWeatherSeg* Seg = SegAt(S, S.Time)) Cur = Seg->Type;
 	Env.Cur = Cur;
-	float Ramp = 1.f;
+	float Ramp = bOverride ? FMath::Clamp(OverrideK, 0.f, 1.f) : 1.f;
 	if (!bOverride) if (const FKAPWeatherSeg* Seg = SegAt(S, S.Time)) Ramp = FMath::Clamp((float)FMath::Min(S.Time - Seg->Start, Seg->Start + Seg->Dur - S.Time) / 0.2f, 0.f, 1.f);
 	if (Cur == EWeatherType::Storm) Target[0] = Ramp; else if (Cur == EWeatherType::Rain) Target[1] = Ramp; else if (Cur == EWeatherType::Fog) Target[2] = Ramp; else if (Cur == EWeatherType::Heat) Target[3] = Ramp;
 	const float K = bInstant ? 1.f : FMath::Min(1.f, Dt * 0.6f);
@@ -129,8 +134,9 @@ void AWeatherManager::UpdateEnv(FKAPSession& S, float Dt, double Dh)
 	Env.Temp = 21.f + 13.f * SunF + Env.Heat * 10.f - Env.Rain * 6.f - Env.Storm * 3.f;
 	const float Elev = FMath::Sin((float)((H - 6.0) / 12.0 * UE_PI));
 	Env.bNight = Elev < 0;
-	float Vis = Elev > 0 ? 1100.f : FMath::Lerp(1100.f, 650.f, FMath::Clamp(-Elev * 4.f, 0.f, 1.f));
-	Vis = FMath::Lerp(Vis, 250.f, Env.Rain); Vis = FMath::Lerp(Vis, 60.f, Env.Fog); Vis = FMath::Lerp(Vis, 24.f, Env.Storm);
+	// дала әрқашан шаңды: ашық күнде де алыс көкжиек мұнарға сіңеді (атмосфера + алыс бөлшектер көрінбейді)
+	float Vis = Elev > 0 ? 680.f : FMath::Lerp(680.f, 430.f, FMath::Clamp(-Elev * 4.f, 0.f, 1.f));
+	Vis = FMath::Lerp(Vis, 220.f, Env.Rain); Vis = FMath::Lerp(Vis, 55.f, Env.Fog); Vis = FMath::Lerp(Vis, 36.f, Env.Storm);
 	Env.Visibility = VisOverride > 0 ? VisOverride : Vis;
 	Env.Wind = FVector(200 + Env.Storm * 1400, 50 + Env.Storm * 400, 0);
 	Env.Lightning = FMath::Max(0.f, Env.Lightning - Dt * 4.f);
@@ -155,27 +161,38 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	// Тұман: көріну қашықтығы → тығыздық
 	const float Vis = FMath::Max(8.f, Env.Visibility);
 	HeightFog->SetFogDensity(FMath::Clamp(28.f / Vis, 0.01f, 5.f));
-	const FLinearColor StormC(0.52f, 0.36f, 0.2f), RainC(0.32f, 0.35f, 0.38f), FogC(0.62f, 0.62f, 0.6f), ClearC(0.45f, 0.5f, 0.6f);
+	// күндізгі мұнар — жылы сұр-охра шаң (көк емес); жаңбыр — суық сұр; тұман — сүтті; дауыл — қою қоңыр
+	const FLinearColor StormC(0.42f, 0.29f, 0.17f), RainC(0.3f, 0.33f, 0.36f), FogC(0.58f, 0.58f, 0.57f), ClearC(0.6f, 0.54f, 0.45f);
 	FLinearColor C = ClearC;
 	C = FMath::Lerp(C, RainC, Env.Rain); C = FMath::Lerp(C, FogC, Env.Fog); C = FMath::Lerp(C, StormC, Env.Storm);
-	C *= 0.15f + 0.85f * Day;
+	C *= 0.12f + 0.88f * Day;
 	const float Night = 1.f - Day;
-	C = FMath::Lerp(C, FLinearColor(0.035f, 0.05f, 0.09f), Night * (1.f - Env.Storm * 0.5f)); // суық көкшіл түн
+	C = FMath::Lerp(C, FLinearColor(0.03f, 0.045f, 0.085f), Night * (1.f - Env.Storm * 0.5f)); // суық көкшіл түн
 	HeightFog->SetFogInscatteringColor(C);
-	HeightFog->SetFogMaxOpacity(Env.Storm > 0.3f || Env.Fog > 0.3f ? 1.f : 0.95f);
-	HeightFog->SetFogHeightFalloff(FMath::Lerp(FMath::Lerp(0.12f, 0.03f, Night), 0.004f, FMath::Max(Env.Storm, Env.Fog)));
+	HeightFog->SetFogMaxOpacity(Env.Storm > 0.3f || Env.Fog > 0.3f ? 1.f : 0.97f);
+	HeightFog->SetFogHeightFalloff(FMath::Lerp(FMath::Lerp(0.1f, 0.03f, Night), 0.004f, FMath::Max(Env.Storm, Env.Fog)));
+	// күн жағына қарағанда мұнар жарқырайды (кинематографиялық «жарық ауа»)
+	const FLinearColor SunGlow = FLinearColor(0.62f, 0.45f, 0.27f) * Day * Dim + FLinearColor(0.025f, 0.035f, 0.06f) * Night;
+	HeightFog->SetDirectionalInscatteringColor(SunGlow);
+	HeightFog->SetDirectionalInscatteringExponent(FMath::Lerp(7.f, 3.f, Env.Storm));
+	HeightFog->SetDirectionalInscatteringStartDistance(1500.f);
+	// жерге жабысқан шаң қабаты (~10 м): алыстағы аяқ-қол көмескі, қабат-қабат тереңдік
+	HeightFog->SetSecondFogDensity(0.025f + Env.Storm * 0.22f + Env.Fog * 0.12f + Night * 0.015f);
+	HeightFog->SetSecondFogHeightFalloff(0.9f);
+	HeightFog->SetSecondFogHeightOffset(0.f);
 	HeightFog->SetVolumetricFogDistance(7000.f);
-	HeightFog->SetVolumetricFogScatteringDistribution(0.55f);
-	HeightFog->SetVolumetricFogExtinctionScale(1.f + Night * 1.2f + Env.Storm * 5.f + Env.Fog * 3.f); // дауыл: 3–8
-	HeightFog->SetVolumetricFogAlbedo(FLinearColor(FMath::Lerp(FLinearColor(0.9f, 0.9f, 0.9f), FLinearColor(0.85f, 0.6f, 0.35f), Env.Storm)).ToFColor(true));
-	HeightFog->SetStartDistance(Env.Storm > 0.5f ? 0.f : 500.f);
+	HeightFog->SetVolumetricFogScatteringDistribution(0.62f);
+	HeightFog->SetVolumetricFogExtinctionScale(1.f + Night * 1.2f + Env.Storm * 4.f + Env.Fog * 2.5f);
+	HeightFog->SetVolumetricFogAlbedo(FLinearColor(FMath::Lerp(FLinearColor(0.9f, 0.88f, 0.84f), FLinearColor(0.85f, 0.6f, 0.35f), Env.Storm)).ToFColor(true));
+	// дауылда да жақын 1.5–3 м ашық: заттар қарамен көрінеді, ары қарай біртіндеп жоғалады (тегіс қабырға емес)
+	HeightFog->SetStartDistance(FMath::Lerp(400.f, 150.f, FMath::Max(Env.Storm, Env.Fog)));
 	// Бұлттар — жаңбыр мен дауылда қалыңырақ көрінуі үшін төмендейді
 	Clouds->SetLayerBottomAltitude(FMath::Lerp(5.f, 1.2f, FMath::Max(Env.Rain, Env.Storm)));
 	SkyLight->SetIntensity(0.16f + Day * 0.95f + Env.Lightning * 2.f);
 	// Пост-процесс: дауылда қоңыр, ыстықта «жылу» реңкі
 	FPostProcessSettings& P = Post->Settings;
 	P.bOverride_ColorSaturation = true;
-	const float Sat = 0.82f - Env.Storm * 0.2f - Night * 0.2f; // «сөнген» түстер (0.7–0.85)
+	const float Sat = 0.82f - Env.Storm * 0.3f - Night * 0.2f; // «сөнген» түстер (0.7–0.85)
 	P.ColorSaturation = FVector4(Sat, Sat, Sat, 1.f);
 	P.bOverride_ColorContrast = true; P.ColorContrast = FVector4(1.f + Night * 0.12f, 1.f + Night * 0.12f, 1.f + Night * 0.12f, 1.f);
 	P.BloomIntensity = 0.65f - Night * 0.3f; P.VignetteIntensity = 0.4f + Night * 0.1f; P.FilmGrainIntensity = 0.15f + Night * 0.08f;
@@ -195,17 +212,28 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	G = FMath::Lerp(G, FVector(1.06f, 0.93f, 1.08f), Dawn);
 	G = FMath::Lerp(G, FVector(1.18f, 0.92f, 0.74f), Dusk);
 	G = FMath::Lerp(G, FVector(0.84f, 0.95f, 1.16f), Night);
-	G = FMath::Lerp(G, FVector(1.13f, 1.0f, 0.76f), Env.Storm);
+	G = FMath::Lerp(G, FVector(1.06f, 1.0f, 0.86f), Env.Storm);
 	G += FVector(0.05f, 0.02f, -0.04f) * Env.Heat;
 	P.ColorGain = FVector4(G.X, G.Y, G.Z, 1.f);
-	const float Ct = 1.f + DayK * 0.06f + Night * 0.12f - Env.Storm * 0.14f;
+	const float Ct = 1.f + DayK * 0.06f + Night * 0.12f - Env.Storm * 0.1f;
 	P.ColorContrast = FVector4(Ct, Ct, Ct, 1.f);
+	// фильм реңкі: көлеңкелер суық, жарық жерлер жылы, қара түс тереңірек
+	P.bOverride_ColorGainShadows = true; P.ColorGainShadows = FVector4(0.93f, 0.97f, 1.07f, 1.f);
+	P.bOverride_ColorGainHighlights = true; P.ColorGainHighlights = FVector4(1.04f, 1.f, 0.94f, 1.f);
+	P.bOverride_FilmToe = true; P.FilmToe = 0.6f;
+	P.bOverride_FilmSlope = true; P.FilmSlope = 0.86f;
 	P.bOverride_WhiteTemp = true;
 	P.WhiteTemp = 6500.f - Env.Heat * 600.f + (1 - Day) * 1200.f;
 	// экспозиция (EV100): күндіз кең, түнде −1.5…1 — фара мен прожектор басым жарық, бірақ ай жарығында пішіндер көрінеді
-	P.bOverride_AutoExposureBias = true; P.AutoExposureBias = -0.3f * Night;
-	P.AutoExposureMinBrightness = FMath::Lerp(0.5f, -1.5f, Night);
-	P.AutoExposureMaxBrightness = FMath::Lerp(12.f, 2.5f, Night);
+	P.bOverride_AutoExposureBias = true; P.AutoExposureBias = -0.3f * Night - 0.35f * Indoor;
+	// ішке кіргенде көз «ашылмайды»: шамдар жарық дақ, бұрыштар қараңғы (күндіз EV 5-тен төмен түспейді)
+	P.AutoExposureMinBrightness = FMath::Lerp(FMath::Lerp(0.5f, 4.5f, Indoor), FMath::Lerp(-1.5f, -0.8f, Indoor), Night);
+	// түнде экспозиция ең жарық бөлікке қарай өлшенеді: фонарь/фара түскен жер ағарып кетпейді, айнала — қараңғы
+	P.AutoExposureMaxBrightness = FMath::Lerp(12.f, 6.f, Night);
+	P.bOverride_AutoExposureLowPercent = true; P.AutoExposureLowPercent = FMath::Lerp(10.f, 62.f, Night);
+	P.bOverride_AutoExposureHighPercent = true; P.AutoExposureHighPercent = FMath::Lerp(90.f, 97.f, Night);
+	// дауыл: біркелкі жарық «қабырға» емес, күңгірт, ауыр
+	P.AutoExposureBias += -0.7f * Env.Storm;
 	P.bOverride_AutoExposureSpeedUp = true; P.AutoExposureSpeedUp = 2.f;
 	P.bOverride_AutoExposureSpeedDown = true; P.AutoExposureSpeedDown = 1.f;
 	SkyRecaptureAcc += Dt;

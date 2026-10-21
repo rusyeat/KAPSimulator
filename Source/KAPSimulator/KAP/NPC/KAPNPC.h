@@ -10,7 +10,7 @@
 #include "KAPNPC.generated.h"
 
 UENUM()
-enum class ENPCKind : uint8 { Worker, Villager, Elder, Militia, Guard, Bandit, Survivor, Irradiated, Wolf, Worm, Mother, Police, Soldier, Trader };
+enum class ENPCKind : uint8 { Worker, Villager, Elder, Militia, Guard, Bandit, Survivor, Irradiated, Wolf, Worm, Mother, Police, Soldier, Trader, Boy, Girl, SickChild };
 /** NPC тапсырмасы (KAPNPCTasks.cpp) */
 enum class ENPCTask : uint8 { None, Repair, Carry, Patrol, Campfire, Flee };
 
@@ -34,6 +34,7 @@ public:
 	virtual float GetInteractRadius() const override { return 280.f; }
 
 	bool IsHuman() const { return Kind != ENPCKind::Wolf && Kind != ENPCKind::Worm; }
+	bool IsChild() const { return Kind == ENPCKind::Boy || Kind == ENPCKind::Girl || Kind == ENPCKind::SickChild; }
 	bool IsHostileToPlayer() const;
 	/** «Аңдушы»: қараңғыда алыстан қарап тұрады, оған қарасаң — жоғалады, қарамасаң — жақындайды */
 	bool bStalker = false;
@@ -108,4 +109,7 @@ private:
 	void Bark(float DistP);
 	void SoundTick(float Dt, float DistP);
 	FVector LastPos;
+	/** Өнімділік LOD: 0 — жақын (толық), 1 — орта, 2 — алыс (сирек), 3 — өте алыс (тоқтап тұрады) */
+	int8 LodTier = -1;
+	void UpdateLod(float DistP);
 };

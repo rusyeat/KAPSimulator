@@ -29,7 +29,10 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SpotLightComponent.h"
+#include "Components/PointLightComponent.h"
 #include "UnrealClient.h"
+#include "RenderTimer.h"
+#include "DynamicRHI.h"
 extern ENGINE_API float GAverageFPS;
 extern ENGINE_API float GAverageMS;
 #include "KAP/World/KAPAtmosphere.h"
@@ -112,11 +115,12 @@ void AKAPGameMode::BeginPlay()
 	UKAPGameInstance* GI = UKAPGameInstance::Get(this);
 	if (GI && GI->bLoadOnStart) { GI->bLoadOnStart = false; StartSession(true); }
 	else { bInMenu = true; if (AKAPCharacter* P = Player()) P->bFrozen = true; }
-	// мәзір фоны — дала көрінісі
-	Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true;
+	// мәзір фоны — түнгі ұңғыма, жеңіл құм дауылы, маңдай шамы бар инженер (SetupMenuScene)
+	Weather->bOverride = true; Weather->OverrideType = EWeatherType::Storm; Weather->OverrideK = 0.42f; Weather->bInstant = true;
 	FKAPSession& Ss = S();
-	Ss.Time = 17.2;
+	Ss.Time = 21.8;
 	Weather->UpdateEnv(Ss, 0.016f, 0);
+	if (bInMenu) SetupMenuScene();
 	// Автоматты тексеру: -kapautotest (скриншоттар Saved/Screenshots ішіне)
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapsounddump"))) { FTimerHandle Hd; GetWorldTimerManager().SetTimer(Hd, FTimerDelegate::CreateLambda([this]() { UKAPAudio::Get(this)->DumpAll(); FGenericPlatformMisc::RequestExit(false); }), 2.f, false); }
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvehshots")))
@@ -191,6 +195,75 @@ void AKAPGameMode::BeginPlay()
 		}
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 36.f, false);
 	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapperf")))
+	{
+		// Өнімділікті өлшеу: ойын ағынының қай бөлігі уақыт алатынын логқа жазу (stat dumpave)
+		auto Cmd = [this](const TCHAR* C) { if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->ConsoleCommand(C); };
+		auto Go = [this](FVector2D Pm, float Yaw)
+		{
+			if (AKAPCharacter* P = Player())
+			{
+				P->SetActorLocation(FVector(Pm.X * 100, Pm.Y * 100, KAPVis::GroundZ(GetWorld(), Pm.X * 100, Pm.Y * 100, 0) + 110), false, nullptr, ETeleportType::TeleportPhysics);
+				if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->SetControlRotation(FRotator(-5, Yaw, 0));
+			}
+		};
+		auto Perf = [](const TCHAR* N) { UE_LOG(LogTemp, Display, TEXT("KAPPERF %s: fps %.1f game %.1f render %.1f gpu %.1f ms"), N, GAverageFPS, FPlatformTime::ToMilliseconds(GGameThreadTime), FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())); };
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { SkipCinematic(); } },
+			{ 12.f, [this, Go]() { Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5; if (const FKAPLocationRow* L = UKAPDataSubsystem::Get(this)->Loc("aksai")) Go(FVector2D(L->X - 30, L->Y), 0.f); } },
+			{ 17.f, [this, Perf, Cmd]()
+			{
+				Perf(TEXT("village"));
+				int32 Npc = 0, Ticking = 0, Comps = 0; for (TActorIterator<AActor> It(GetWorld()); It; ++It) { if (It->IsA<AKAPNPC>()) Npc++; if (It->IsActorTickEnabled() && It->PrimaryActorTick.bCanEverTick) Ticking++; Comps += It->GetComponents().Num(); }
+				UE_LOG(LogTemp, Display, TEXT("KAPPERF counts: npc=%d tickingActors=%d components=%d"), Npc, Ticking, Comps);
+				Cmd(TEXT("stat dumpave -num=60 -ms=0.15 -root=TG_EndPhysics -depth=40"));
+			} },
+			{ 21.f, [Cmd]() { Cmd(TEXT("stat dumpave -num=60 -ms=0.12 -root=RenderViewFamily -depth=40")); } },
+			{ 24.f, [this, Go]() { S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 23.5; if (const FKAPLocationRow* L = UKAPDataSubsystem::Get(this)->Loc("josaly")) Go(FVector2D(L->X - 40, L->Y + 10), 0.f); } },
+			{ 29.f, [Perf, Cmd]() { Perf(TEXT("night_josaly")); Cmd(TEXT("stat dumpave -num=60 -ms=0.25 -root=RenderThread -depth=9")); } },
+			{ 36.f, [Cmd]() { Cmd(TEXT("dumpticks")); } },
+			{ 38.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapmapshots")))
+	{
+		// Картаны тексеру: толық экран (бастапқы / барлық аймақ ашық / жақын + кеңес / әскери аймақ), планшет картасы
+		auto Shot = [](const FString& N) { UE_LOG(LogTemp, Display, TEXT("KAPMAP fps %s: %.1f"), *N, GAverageFPS); FScreenshotRequest::RequestScreenshot(TEXT("KAPM_") + N + TEXT(".png"), true, false); };
+		auto LocP = [this](FName Id) { const FKAPLocationRow* R = UKAPDataSubsystem::Get(this)->Loc(Id); return R ? FVector2D(R->X, R->Y) : FVector2D::ZeroVector; };
+		auto Hud = [this]() { return AKAPHUD::Get(this); };
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { SkipCinematic(); } },
+			{ 12.f, [this]() { Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5; S().bHasTablet = true; } },
+			{ 16.f, [Hud]() { if (AKAPHUD* H = Hud()) H->ToggleMap(); } },
+			{ 17.5f, [Shot]() { Shot(TEXT("01_start")); } },
+			{ 18.f, [Hud]() { if (AKAPHUD* H = Hud()) H->MapDebug(FVector2D::ZeroVector, 1.f); } },
+			{ 19.f, [Shot]() { Shot(TEXT("02_overview_locked")); } },
+			{ 19.5f, [this, Hud, LocP]()
+			{
+				S().Regions = { true, true, true, true }; S().Towers.Add("tower1");
+				TArray<FKAPContract*> O = ContractsOf("police", 0); if (O.Num()) AcceptContract(O[0]->Uid);
+				TArray<FKAPContract*> O2 = ContractsOf("trader", 0); if (O2.Num()) AcceptContract(O2[0]->Uid);
+				if (AKAPCharacter* P = Player()) if (P->Navigator) P->Navigator->SetTarget(LocP("josaly"), TEXT("Жосалы ауылы"));
+				if (AKAPHUD* H = Hud()) H->MapDebug(FVector2D::ZeroVector, 1.f);
+			} },
+			{ 21.f, [Shot]() { Shot(TEXT("03_overview_all")); } },
+			{ 21.5f, [Hud, LocP]() { if (AKAPHUD* H = Hud()) H->MapDebug(LocP("aksai") + FVector2D(20, 0), 6.f, LocP("police")); } },
+			{ 22.5f, [Shot]() { Shot(TEXT("04_zoom_aksai")); } },
+			{ 23.f, [this, Hud]() { if (AKAPHUD* H = Hud()) H->MapDebug(ArmyC, 3.5f, ArmyC); } },
+			{ 24.f, [Shot]() { Shot(TEXT("05_army")); } },
+			{ 24.5f, [Hud]() { if (AKAPHUD* H = Hud()) { H->CloseAll(); H->OpenTab(2); H->MapDebug(FVector2D::ZeroVector, 1.f); } } },
+			{ 25.5f, [Shot]() { Shot(TEXT("06_tablet_map")); } },
+			{ 26.f, [Hud]() { if (AKAPHUD* H = Hud()) { H->CloseAll(); H->MapDebug(FVector2D::ZeroVector, 1.f); } } },
+			{ 28.f, [Shot]() { Shot(TEXT("07_gameplay")); } },
+			{ 29.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
+	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapecontest")))
 	{
 		// Экономиканы тексеру: мәзір (+параметрлер), полиция бөлімі, жұмыс тақтасы, планшет, дүкен, әскери аймақ (күндіз/түн)
@@ -244,7 +317,7 @@ void AKAPGameMode::BeginPlay()
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapautotest")))
 	{
 		struct FStep { float T; TFunction<void()> F; };
-		auto Shot = [](const TCHAR* N) { UE_LOG(LogTemp, Display, TEXT("KAPTEST fps %s: %.1f (%.1f ms)"), N, GAverageFPS, GAverageMS); FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("KAP_%s.png"), N), true, false); };
+		auto Shot = [](const TCHAR* N) { UE_LOG(LogTemp, Display, TEXT("KAPTEST fps %s: %.1f (%.1f ms) game %.1f render %.1f gpu %.1f ms"), N, GAverageFPS, GAverageMS, FPlatformTime::ToMilliseconds(GGameThreadTime), FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())); FScreenshotRequest::RequestScreenshot(FString::Printf(TEXT("KAP_%s.png"), N), true, false); };
 		TArray<FStep> Steps = {
 			{ 3.f, [Shot]() { Shot(TEXT("01_menu")); } },
 			{ 4.f, [this]() { MenuNewGame(); } },
@@ -336,11 +409,12 @@ void AKAPGameMode::MenuContinue()
 void AKAPGameMode::StartSession(bool bLoad)
 {
 	bInMenu = false; bEnded = false; bPlayerDead = false;
+	ClearMenuScene();
 	UKAPGameInstance* GI = UKAPGameInstance::Get(this);
 	UWellManagerSubsystem* WM = GetWorld()->GetSubsystem<UWellManagerSubsystem>();
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	FKAPSession& Ss = GI->S;
-	Weather->bOverride = false;
+	Weather->bOverride = false; Weather->OverrideK = 1.f;
 	if (!bLoad)
 	{
 		Ss.Time = D->Cfg("startHour", 12.5f);
@@ -439,9 +513,12 @@ void AKAPGameMode::SpawnPersistentNPCs()
 	for (FName V : { FName("aksai"), FName("josaly") })
 	{
 		const FVector2D C = L(V);
+		Mk(ENPCKind::Boy, C + FVector2D(-4, 6), TEXT("Ауыл баласы"), "child_boy");
+		Mk(ENPCKind::Girl, C + FVector2D(-7, 5), TEXT("Ауыл қызы"), "child_girl");
 		for (int32 i = 0; i < 4; i++) { AKAPNPC* N = Mk(ENPCKind::Villager, C + FVector2D(Rng.FRandRange(-25, 25), Rng.FRandRange(-25, 25)), TEXT("Ауыл тұрғыны"), "villager"); if (N) N->WanderR = 25; }
 		for (int32 i = 0; i < (V == "aksai" ? 5 : 4); i++) { AKAPNPC* N = Mk(ENPCKind::Militia, C + FVector2D(Rng.FRandRange(-30, 30), Rng.FRandRange(-30, 30)), TEXT("Жасақшы"), "militia"); if (N) N->PatrolR = 55; }
 	}
+	NamedNPC.Add("sick_child", Mk(ENPCKind::SickChild, L("aksai") + FVector2D(5, 7), TEXT("Науқас бала"), "child_sick"));
 	if (AKAPNPC* B = Mk(ENPCKind::Guard, L("guard1") + FVector2D(2, 2.5f), TEXT("Күзетші Бекзат"), "bekzat")) { B->PatrolR = 2; NamedNPC.Add("bekzat", B); }
 	for (int32 i = 0; i < 3; i++) if (AKAPNPC* G = Mk(ENPCKind::Guard, L("hq") + FVector2D(-6 + i * 6, 48), TEXT("Кеніш күзетшісі"), "hqguard")) G->PatrolR = 6;
 	// жұмысшылар
@@ -621,12 +698,30 @@ void AKAPGameMode::Tick(float Dt)
 		Weather->UpdateEnv(Ss, Dt, 0);
 		if (AKAPCharacter* P = Player()) if (APlayerController* PC = Cast<APlayerController>(P->GetController()))
 		{
-			// мәзір камерасы баяу айналады
 			if (!CineCam) CineCam = GetWorld()->SpawnActor<ACameraActor>();
-			const float A = GetWorld()->GetTimeSeconds() * 0.03f;
-			const FVector C(-78000, 64000, KAPVis::GroundZ(GetWorld(), -78000, 64000, 0));
-			CineCam->SetActorLocation(C + FVector(FMath::Cos(A) * 6000, FMath::Sin(A) * 6000, 1800));
-			CineCam->SetActorRotation((C - CineCam->GetActorLocation()).Rotation());
+			const float T = GetWorld()->GetRealTimeSeconds();
+			if (bMenuScene)
+			{
+				// қолмен ұстаған камера: баяу жақындап-алыстайды, сәл тербеледі
+				const FVector Fw = (MenuLook - MenuCamBase).GetSafeNormal2D(), Rt(-Fw.Y, Fw.X, 0);
+				const float Dolly = FMath::Sin(T * 0.07f) * 70.f;
+				const FVector Sway = Rt * (FMath::Sin(T * 0.41f) * 9.f + FMath::Sin(T * 1.13f) * 2.5f) + FVector(0, 0, FMath::Sin(T * 0.53f) * 5.f + FMath::Sin(T * 1.7f) * 1.5f);
+				CineCam->SetActorLocation(MenuCamBase + Fw * Dolly + Sway);
+				FRotator R = (MenuLook - CineCam->GetActorLocation()).Rotation();
+				R.Roll = FMath::Sin(T * 0.33f) * 0.8f;
+				CineCam->SetActorRotation(R);
+				CineCam->GetCameraComponent()->SetFieldOfView(52.f);
+				// апат шамы жыпылықтайды, маңдай шамы аздап дірілдейді
+				if (MenuBeacon) MenuBeacon->SetIntensity(1400.f * FMath::Pow(FMath::Max(0.f, FMath::Sin(T * 3.4f)), 3.f) + 40.f);
+				if (MenuHeadlamp) MenuHeadlamp->SetIntensity(1500.f * (0.96f + 0.04f * FMath::Sin(T * 37.f)));
+			}
+			else
+			{
+				const float A = GetWorld()->GetTimeSeconds() * 0.03f;
+				const FVector C(-78000, 64000, KAPVis::GroundZ(GetWorld(), -78000, 64000, 0));
+				CineCam->SetActorLocation(C + FVector(FMath::Cos(A) * 6000, FMath::Sin(A) * 6000, 1800));
+				CineCam->SetActorRotation((C - CineCam->GetActorLocation()).Rotation());
+			}
 			if (PC->GetViewTarget() != CineCam) PC->SetViewTarget(CineCam);
 		}
 		return;
@@ -658,6 +753,7 @@ void AKAPGameMode::Tick(float Dt)
 		Au->SetRain(Weather->Env.Rain);
 		IndoorAu = FMath::FInterpTo(IndoorAu, P && (P->bIndoor || CurrentVehicle.IsValid()) ? 1.f : 0.f, Dt, 3.f);
 		Au->SetIndoor(IndoorAu);
+		Weather->Indoor = FMath::FInterpTo(Weather->Indoor, P && P->bIndoor ? 1.f : 0.f, Dt, 1.5f);
 		if (P)
 		{
 			Au->Update(Dt, P->GetActorLocation(), Weather->Env.bNight, Weather->Env.Storm);
@@ -689,7 +785,7 @@ void AKAPGameMode::Tick(float Dt)
 			{ const double Hh = FMath::Fmod(Ss.Time, 24.0); if (DombraCd <= 0 && FearSm < 0.1f && ((Hh > 5.5 && Hh < 7.5) || (Hh > 18.0 && Hh < 20.5))) { const float Dur = Au->Dombra(); Au->Duck(Dur, 0.35f); DombraCd = FMath::FRandRange(300.f, 540.f); UE_LOG(LogTemp, Display, TEXT("KAPTEST dombra")); } }
 			// монстр жақында — фонарь «өліп» бара жатқандай жыпылықтайды
 			if (P->Flashlight && P->Flashlight->Intensity > 0)
-				P->Flashlight->SetIntensity(1800.f * (FearSm > 0.55f && FMath::FRand() < 0.22f ? FMath::FRandRange(0.05f, 0.6f) : 1.f));
+				P->Flashlight->SetIntensity(800.f * (FearSm > 0.55f && FMath::FRand() < 0.22f ? FMath::FRandRange(0.05f, 0.6f) : 1.f));
 		}
 		// «қауіп алдындағы тыныштық»: жасырын жүрген монстр жақын болса шегірткелер тынады, жел бәсеңдейді
 		bool bLurk = false;
@@ -1360,6 +1456,12 @@ void AKAPGameMode::StoryTick(float Dt)
 void AKAPGameMode::Talk(AKAPNPC* N)
 {
 	TalkNPC = N;
+	if (N && N->IsChild())
+	{
+		const TCHAR* Line = N->bSick ? TEXT("Бүгін тағы әлсіз болып тұрмын... Анам дәрігер келеді деді. Терезеден достарымның ойнап жүргенін көріп отырмын.") : N->Kind == ENPCKind::Girl ? TEXT("Біз осы ауылда тұрамыз. Інім бүгін сыртқа шыға алмады. Тезірек жазылса екен...") : TEXT("Ауылдан алысқа баруға болмайды дейді. Ағалар ұңғымаларды жөндеп болғанда, далада еркін ойнаймыз ба?");
+		Dialog(N->DisplayName, Line, { { TEXT("Аман бол. Өзіңді күт."), nullptr, false } });
+		return;
+	}
 	if (EconomyTalk(N)) return; // полиция, сатушы, әскер (KAPEconomy.cpp)
 	FKAPSession& Ss = S();
 	const int32 Day = FMath::FloorToInt32(Ss.Time / 24.0);
@@ -1692,7 +1794,7 @@ void AKAPGameMode::Intro()
 		}
 		StartQuest("m_shelter", false);
 		Subtitle(TEXT("Баспана табыңыз"), TEXT("Найдите укрытие"), FString(), 6);
-		Toast(TEXT("Бағдар — вагон-үй шамының жарығы. WASD — жүру, тышқан — қарау, E — әрекет, Tab — планшет, Q — көрсеткіштер."), "info");
+		Toast(TEXT("Бағдар — вагон-үй шамының жарығы. WASD — жүру, тышқан — қарау, E — әрекет, Tab — планшет, M — карта, Q — көрсеткіштер."), "info");
 	});
 }
 

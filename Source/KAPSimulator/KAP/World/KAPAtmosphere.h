@@ -60,6 +60,9 @@ private:
 	int32 NextTrack = 0;
 	FVector LastFoot = FVector::ZeroVector;
 	bool bLeftFoot = false;
+	/** Секіру/құлау: ауада болды ма және ең үлкен құлау жылдамдығы (жерге түскенде дыбыс) */
+	bool bWasAir = false;
+	float AirVz = 0.f;
 	TMap<TWeakObjectPtr<AActor>, FVector> LastWheel;
 
 	struct FLamp { USpotLightComponent* L = nullptr; UStaticMeshComponent* Bulb = nullptr; UStaticMeshComponent* Beacon = nullptr; };

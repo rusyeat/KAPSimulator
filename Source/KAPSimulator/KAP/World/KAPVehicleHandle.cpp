@@ -82,13 +82,38 @@ void AKAPVehicleHandle::UpdateLights(float Dt)
 	if (TailL) TailL->SetIntensity((bBrake ? 10.f : 2.5f) * FMath::Max(K, bBrake ? 1.f : 0.f));
 }
 
+void AKAPVehicleHandle::SetSleeping(bool bSleep)
+{
+	bSleeping = bSleep;
+	SetActorTickInterval(bSleep ? 0.25f : 0.f);
+	if (!Pawn) return;
+	// көлік павнының барлық тикі (Chaos қозғалысы, дөңгелектер, камера) — ұйықтағанда тоқтайды
+	Pawn->SetActorTickEnabled(!bSleep);
+	for (UActorComponent* C : Pawn->GetComponents())
+		if (C && C->PrimaryComponentTick.bCanEverTick) C->SetComponentTickEnabled(!bSleep);
+	// симуляция толық тоқтайды (ұйқыдағы денеде де анимация/overlap есебі қалады), оянғанда қайта қосылады
+	if (USkeletalMeshComponent* M = Pawn->GetMesh())
+	{
+		if (bSleep) { M->PutAllRigidBodiesToSleep(); M->SetSimulatePhysics(false); }
+		else { M->SetSimulatePhysics(true); M->WakeAllRigidBodies(); }
+	}
+}
+
 void AKAPVehicleHandle::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	if (!Pawn) return;
-	SetActorLocation(Pawn->GetActorLocation());
 	UChaosWheeledVehicleMovementComponent* Mov = Cast<UChaosWheeledVehicleMovementComponent>(Pawn->GetChaosVehicleMovement());
 	const bool bActive = bDriven || bAutoPilot;
+	{
+		const APawn* Me = GetWorld()->GetFirstPlayerController() ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr;
+		const float DistP = Me ? FVector::Dist(Me->GetActorLocation(), Pawn->GetActorLocation()) / 100.f : 0.f;
+		const bool bStill = Pawn->GetVelocity().SizeSquared() < 60.f * 60.f;
+		if (!bSleeping && !bActive && bStill && DistP > 35.f && GetGameTimeSinceCreation() > 6.f) SetSleeping(true);
+		else if (bSleeping && (bActive || DistP < 30.f)) SetSleeping(false);
+		if (bSleeping) return;
+	}
+	SetActorLocation(Pawn->GetActorLocation());
 	if (Mov && bActive) Rpm01 = FMath::Clamp(Mov->GetEngineRotationSpeed() / FMath::Max(1.f, Mov->GetEngineMaxRotationSpeed()), 0.f, 1.f);
 	else Rpm01 = FMath::FInterpTo(Rpm01, 0.f, Dt, 2.f);
 	UpdateLights(Dt);

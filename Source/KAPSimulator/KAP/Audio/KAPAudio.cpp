@@ -6,8 +6,12 @@
 #include "Sound/ReverbEffect.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Sound/SoundWave.h"
+#include "UObject/StrongObjectPtr.h"
+#include "UObject/Package.h"
 
 static constexpr int32 SR = 44100;
+#include "KAPGeigerClicks.inl"
 static void Noise(TArray<int16>& Out, float Dur, float Vol, float Cut, float Decay);
 static void Tone(TArray<int16>& Out, float Start, float Dur, float Hz, float Vol, float SlideTo = 0, int32 Wave = 0);
 static void AddEcho(TArray<int16>& B, float Delay, float Gain, float Cut);
@@ -36,10 +40,15 @@ int32 UKAPSynthWave::OnGeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSample
 		{
 			// Гейгер: Пуассон процесі, келесі шертпеге дейін -ln(U)/λ сек
 			NextClick -= 1.f / SR;
-			if (NextClick <= 0 && Rate > 0.01f) { ClickEnv = 1.f; NextClick = -FMath::Loge(FMath::Max(1e-4f, ((Seed >> 8) & 0xFFFF) / 65536.f)) / Rate; }
-			ClickEnv *= 0.93f;
-			Lp += (Wn - Lp) * 0.7f;
-			S = (Wn - Lp) * ClickEnv * 3.2f;
+			if (NextClick <= 0 && Rate > 0.01f)
+			{
+				NextClick = -FMath::Loge(FMath::Max(1e-4f, ((Seed >> 8) & 0xFFFF) / 65536.f)) / Rate;
+				// бос дауысқа нақты шертпе (Eberline E-120 жазбасынан), әр жолы басқасы
+				for (int32 v = 0; v < 4; v++) if (ClkPos[v] < 0) { ClkPos[v] = 0; ClkIdx[v] = (int32)((Seed >> 4) % (uint32)GGeigerClickNum); break; }
+			}
+			S = 0.f;
+			for (int32 v = 0; v < 4; v++)
+				if (ClkPos[v] >= 0) { S += GGeigerClicks[ClkIdx[v]][ClkPos[v]] * 1.5f; if (++ClkPos[v] >= GGeigerClickLen) ClkPos[v] = -1; }
 		}
 		else if (Mode == 2)
 		{
@@ -526,14 +535,15 @@ USoundAttenuation* UKAPAudio::AttenFar()
 }
 
 // Беткейге қарай қадам: 0 — құм, 1 — металл, 2 — ағаш/еден, 3 — тас/бетон
-void UKAPAudio::Footstep(FVector Loc, int32 Surface, float Vol)
+void UKAPAudio::Footstep(FVector Loc, int32 Surface, float Vol, bool bRun)
 {
 	{
+		// құм: тау етігінің нақты қадамдары (жүру 24 / жүгіру 19 түрі, freesound CC0)
+		if (Surface == 0 && bRun && HasBank("StepSandRun")) { PlayBank("StepSandRun", Loc, Vol * 0.85f, FMath::FRandRange(0.94f, 1.06f)); return; }
 		static const FName FB[5] = { FName("StepSand"), FName("StepMetal"), FName("StepWood"), FName("StepConcrete"), FName("StepDirt") };
 		if (Surface >= 0 && Surface < 5 && HasBank(FB[Surface]))
 		{
-			PlayBank(FB[Surface], Loc, Vol * (Surface == 1 ? 0.5f : 1.f), FMath::FRandRange(0.9f, 1.1f));
-			if (Surface == 0 && FMath::FRand() < 0.45f) PlayBank("StepDirt", Loc, Vol * 0.3f, FMath::FRandRange(0.85f, 1.f)); // құмның қытыры
+			PlayBank(FB[Surface], Loc, Vol * (Surface == 1 ? 0.5f : 1.f), FMath::FRandRange(0.93f, 1.07f));
 			return;
 		}
 	}
@@ -724,11 +734,38 @@ float UKAPAudio::Dombra()
 	PlayBuffer(Out, 0.42f);
 	return T + 3.f;
 }
+void UKAPAudio::Land(FVector Loc, int32 Surface, float Strength)
+{
+	const float V = FMath::Clamp(0.35f + Strength * 0.65f, 0.f, 1.f);
+	if (Surface == 0 && HasBank("LandSand")) { PlayBank("LandSand", Loc, V, FMath::FRandRange(0.95f, 1.05f)); return; }
+	Footstep(Loc, Surface, V);
+	if (Strength > 0.5f) Impact(Loc, Surface == 1 ? 1 : 3, 0.4f * Strength);
+}
+
+UAudioComponent* UKAPAudio::AttachGenerator(USceneComponent* To, FVector Offset, float Vol)
+{
+	USoundWave* W = Pick("Generator");
+	if (!W || !To) return nullptr;
+	// жақыннан қатты, 50 м-де фонға сіңеді; әр генератор цикліне кездейсоқ орыннан басталады (бірдей естілмесін)
+	static TStrongObjectPtr<USoundAttenuation> GenAtt;
+	if (!GenAtt.IsValid())
+	{
+		GenAtt.Reset(NewObject<USoundAttenuation>(GetTransientPackage()));
+		FSoundAttenuationSettings& A = GenAtt->Attenuation;
+		A.bAttenuate = true; A.bSpatialize = true;
+		A.AttenuationShape = EAttenuationShape::Sphere; A.AttenuationShapeExtents = FVector(250.f);
+		A.FalloffDistance = 5500.f; A.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+		A.bAttenuateWithLPF = true; A.LPFRadiusMin = 800.f; A.LPFRadiusMax = 5000.f; A.LPFFrequencyAtMax = 900.f;
+	}
+	UAudioComponent* C = UGameplayStatics::SpawnSoundAttached(W, To, NAME_None, Offset, EAttachLocation::KeepRelativeOffset, true, Vol, FMath::FRandRange(0.95f, 1.05f), FMath::FRandRange(0.f, 18.f), GenAtt.Get(), nullptr, false);
+	return C;
+}
+
 // ---- қару дыбыстары: шытырлақ (дыбыстан жылдам оқ) + газ денесі (төмен гүріл) + механика (затвор) + дала жаңғырығы ----
 void UKAPAudio::Shot(FName W)
 {
 	{
-		const FName B = W == "sniper" ? FName("GunSniper") : W == "shotgun" ? FName("GunShotgun") : W == "ak" ? FName("GunAK") : FName("GunPM");
+		const FName B = W == "sniper" ? (HasBank("GunRifle") ? FName("GunRifle") : FName("GunSniper")) : W == "shotgun" ? FName("GunShotgun") : W == "ak" ? FName("GunAK") : FName("GunPM");
 		if (HasBank(B)) { PlayBank(B, FVector::ZeroVector, W == "flaregun" ? 0.55f : 0.95f, (W == "flaregun" ? 1.3f : 1.f) * FMath::FRandRange(0.96f, 1.04f), true); Duck(0.4f, 0.4f); return; }
 	}
 	struct FGun { float Crack, CrackCut, Body, BodyHz, BodyDec, Mech, MechHz, Echo, Len; };

@@ -37,6 +37,13 @@ AKAPAtmosphere* AKAPAtmosphere::Get(UWorld* W)
 	return W->SpawnActor<AKAPAtmosphere>();
 }
 
+/** Жұмсақ шаң материалы (M_KAP_Dust2: шеті біртіндеп мөлдір, көлемдік жарық); жоқ болса — ескісі */
+static UMaterialInterface* DustMaterial()
+{
+	if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Dust2.M_KAP_Dust2"), nullptr, LOAD_NoWarn | LOAD_Quiet)) return M;
+	return LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Dust.M_KAP_Dust"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+}
+
 void AKAPAtmosphere::BeginPlay()
 {
 	Super::BeginPlay();
@@ -48,7 +55,7 @@ void AKAPAtmosphere::BeginPlay()
 	Dust->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Dust->SetCastShadow(false);
 	Dust->bAffectDistanceFieldLighting = false;
-	if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Dust.M_KAP_Dust"), nullptr, LOAD_NoWarn | LOAD_Quiet))
+	if (UMaterialInterface* M = DustMaterial())
 	{
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(M, Dust);
 		MID->SetVectorParameterValue("Color", FLinearColor(0.85f, 0.78f, 0.66f));
@@ -73,7 +80,7 @@ void AKAPAtmosphere::BeginPlay()
 	Puffs->SetCastShadow(false);
 	Puffs->bAffectDistanceFieldLighting = false;
 	Puffs->TranslucencySortPriority = -1;
-	if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Dust.M_KAP_Dust"), nullptr, LOAD_NoWarn | LOAD_Quiet))
+	if (UMaterialInterface* M = DustMaterial())
 	{
 		PuffMID = UMaterialInstanceDynamic::Create(M, Puffs);
 		PuffMID->SetVectorParameterValue("Color", FLinearColor(0.78f, 0.62f, 0.42f));
@@ -187,6 +194,23 @@ void AKAPAtmosphere::UpdateTracks(float Dt)
 	}
 	AKAPGameMode* GM = AKAPGameMode::Get(this);
 	AKAPCharacter* P = AKAPCharacter::Get(this);
+	// жерге түсу: ауада болып, енді жерде — құлау жылдамдығына қарай дыбыс
+	if (P && !P->IsHidden())
+	{
+		const bool bAir = P->GetCharacterMovement()->IsFalling();
+		if (bAir) AirVz = FMath::Min(AirVz, (float)P->GetVelocity().Z);
+		else if (bWasAir && P->GetCharacterMovement()->IsMovingOnGround() && AirVz < -250.f)
+		{
+			const AActor* Floor = P->GetCharacterMovement()->CurrentFloor.HitResult.GetActor();
+			const bool bSand = !Floor || Floor->GetClass()->GetName().Contains(TEXT("Landscape"));
+			int32 Surf = bSand ? 0 : 1;
+			if (const UPrimitiveComponent* FC = P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent())
+				Surf = FC->ComponentHasTag("SurfMetal") ? 1 : FC->ComponentHasTag("SurfWood") ? 2 : FC->ComponentHasTag("SurfConcrete") ? 3 : Surf;
+			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Land(P->GetActorLocation() - FVector(0, 0, 88), Surf, FMath::Clamp((-AirVz - 250.f) / 900.f, 0.f, 1.f));
+		}
+		if (!bAir) AirVz = 0.f;
+		bWasAir = bAir;
+	}
 	// аяқ іздері
 	if (P && !P->IsHidden() && P->GetCharacterMovement()->IsMovingOnGround() && P->GetVelocity().Size2D() > 60.f)
 	{
@@ -205,7 +229,8 @@ void AKAPAtmosphere::UpdateTracks(float Dt)
 			if (bSand && GM && GM->DistToRoad(FVector2D(Pos) / 100.0) < 3.5) Surf = 4; // қиыршық тасты жол
 			{ static uint32 Seen = 0; if (!(Seen & (1u << Surf))) { Seen |= 1u << Surf; UE_LOG(LogTemp, Display, TEXT("KAPTEST step surface=%d"), Surf); } }
 			if (bSand) StampTrack(FVector(Pos.X, Pos.Y, KAPVis::GroundZ(GetWorld(), Pos.X, Pos.Y, Pos.Z)) + Side, Yaw, FVector(30, 7, 15), false);
-			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Footstep(Pos, Surf, P->GetVelocity().Size2D() > 500 ? 0.6f : 0.38f);
+			const bool bRun = P->GetVelocity().Size2D() > 500;
+			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Footstep(Pos, Surf, bRun ? 0.6f : 0.42f, bRun);
 		}
 	}
 	// дөңгелек іздері (барлық қозғалыстағы көліктер)
@@ -239,8 +264,9 @@ void AKAPAtmosphere::UpdateParticles(float Dt, const FVector& Cam)
 	// тығыздық: түнде көп (жарықта көрінеді), дауылда — ең көп
 	const float Density = FMath::Clamp(0.15f + (bNight ? 0.45f : 0.f) + Fog * 0.3f + Storm * 0.9f, 0.f, 1.f);
 	const int32 Active = FMath::RoundToInt32(NumDust * Density);
-	const float Size = 0.035f + Storm * 0.02f;
+	const float Size = 0.03f + Storm * 0.012f;
 	const float T = GetWorld()->GetTimeSeconds();
+	const FQuat WindQ = (Wind.SizeSquared() > 1.f ? Wind.GetSafeNormal() : FVector::ForwardVector).ToOrientationQuat();
 	for (int32 i = 0; i < NumDust; i++)
 	{
 		FVector& P = DustPos[i];
@@ -254,9 +280,13 @@ void AKAPAtmosphere::UpdateParticles(float Dt, const FVector& Cam)
 			if (Rel[a] < Lo) Rel[a] += Hi - Lo; else if (Rel[a] > Hi) Rel[a] -= Hi - Lo;
 		}
 		P = Cam + Rel;
-		const float S = i < Active ? Size * (0.6f + 0.8f * ((i * 7919) % 100) / 100.f) : 0.f;
+		// көз алдында (≤90 см) тұрған бөлшек үлкен «көпіршік» болып көрінбесін
+		const float NearK = FMath::Clamp((Rel.Size() - 90.f) / 120.f, 0.f, 1.f);
+		const float S = i < Active ? Size * (0.6f + 0.8f * ((i * 7919) % 100) / 100.f) * NearK : 0.f;
 		DustXf[i].SetLocation(P);
-		DustXf[i].SetScale3D(FVector(S, S, S * (1.f + Storm * 2.f)));
+		// дауылда жел бойымен созылған құм «сызықтары»
+		DustXf[i].SetRotation(WindQ);
+		DustXf[i].SetScale3D(FVector(S * (1.f + Storm * 5.f), S * (1.f - Storm * 0.4f), S * (1.f - Storm * 0.4f)));
 	}
 	Dust->BatchUpdateInstancesTransforms(0, DustXf, true, true, true);
 	// шаң бұлттары: күндіз аздап (сағым/шаң), дауылда — қалың; жартысы жерге жабысқан жалпақ ағын

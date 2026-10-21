@@ -43,11 +43,15 @@ public:
 	/** Демо/сюжет үшін ауа райын мәжбүрлеу */
 	bool bOverride = false;
 	EWeatherType OverrideType = EWeatherType::Clear;
+	/** Мәжбүрлі ауа райының күші (0..1): мәзірде — жеңіл дауыл */
+	float OverrideK = 1.f;
 	bool bInstant = false;
 	/** Кіріспе: көріну қашықтығын тікелей беру (м), <0 — өшірулі */
 	float VisOverride = -1.f;
 	/** Қорқыныш (0..1): винетка, дән, хроматикалық ауытқу, түссіздену */
 	float Fear = 0.f;
+	/** Ойыншы ғимарат ішінде (0..1): экспозиция көтерілмейді — шам жарығы «дақ» болып көрінеді */
+	float Indoor = 0.f;
 
 	static AWeatherManager* Get(UWorld* W);
 private:

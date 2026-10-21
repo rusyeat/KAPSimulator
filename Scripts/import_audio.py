@@ -12,7 +12,8 @@ def files(pattern):
     return sorted(glob.glob(pattern))
 
 BANKS = [
-    ("SFX", "StepSand", files(KI + "/footstep_snow_*.ogg")),
+    # құм қадамдары енді freesound жазбасынан (import_freesound.py), бұл тек ескі нұсқа
+    ("SFX", "StepSandOld", files(KI + "/footstep_snow_*.ogg")),
     ("SFX", "StepConcrete", files(KI + "/footstep_concrete_*.ogg")),
     ("SFX", "StepWood", files(KI + "/footstep_wood_*.ogg")),
     ("SFX", "StepCarpet", files(KI + "/footstep_carpet_*.ogg")),

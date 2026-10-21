@@ -185,6 +185,14 @@ private:
 	TOptional<FCine> Cine;
 	UPROPERTY() TObjectPtr<ACameraActor> CineCam;
 	TArray<TWeakObjectPtr<AActor>> CineActors;
+	/** Басты мәзір сахнасы (KAPMenuScene.cpp): түнгі ұңғыма, маңдай шамы бар инженер, апат шамы, прожектор */
+	void SetupMenuScene();
+	void ClearMenuScene();
+	bool bMenuScene = false;
+	FVector MenuCamBase = FVector::ZeroVector, MenuLook = FVector::ZeroVector;
+	UPROPERTY() TObjectPtr<class UPointLightComponent> MenuBeacon;
+	UPROPERTY() TObjectPtr<class USpotLightComponent> MenuHeadlamp;
+	TArray<TWeakObjectPtr<AActor>> MenuActors;
 	float WaitT = 0, WaterRadioT = 0, DirT = 0, Acc1 = 0, Acc2 = 0, Acc15 = 0;
 	TMap<int32, TWeakObjectPtr<AKAPNPC>> Bosses;
 	bool bRadioPulse = false;

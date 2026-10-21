@@ -26,6 +26,10 @@
 | Ambience Pack 1 – Sci-Fi Horror | Joth | https://opengameart.org/content/ambience-pack-1-sci-fi-horror | `Ambient_*` (фон музыкасы) |
 | Insistent (background loop) | yd | https://opengameart.org/content/insistent-background-loop | `Danger_0` (қауіп музыкасы) |
 | Abandoned passages / freezer (horror ambience loop) | congusbongus | https://opengameart.org/content/abandoned-passages-horror-ambience-loop | `Indoor_0` |
+| Footsteps_Mountain_Boots_Wet_Sand_Sequence_Mono | Nox_Sound | https://freesound.org/s/564893/ | `StepSand_*` (жүру), `StepSandRun_*`, `LandSand_*` |
+| Small Diesel Generator | jameswrowles | https://freesound.org/s/516759/ | `Generator_0/1` (цикл), `GenStart_0`, `GenStop_0` |
+| shooting_1 (firing a rifle outdoors) | mchrpt | https://freesound.org/s/660978/ | `GunRifle_*` (снайпер, алыстағы атыс) |
+| Geiger Counter Hotspot (Sweeping) | cookies+policy | https://freesound.org/s/555934/ | дозиметр шертпелері (`KAPGeigerClicks.inl`) |
 
 ## Дауыстар (TTS)
 

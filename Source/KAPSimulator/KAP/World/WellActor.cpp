@@ -158,7 +158,7 @@ void AWellActor::SetVisualState(EWellState State, EFaultType Fault)
 	if (Puddle) Puddle->SetVisibility(State == EWellState::Leak || (State == EWellState::Fault && Fault == EFaultType::Acid));
 	if (Scorch) Scorch->SetVisibility(State == EWellState::Fire || State == EWellState::Lost);
 	if (Sign) Sign->SetTextRenderColor(State == EWellState::Ok ? FColor::White : State == EWellState::Lost ? FColor(90, 90, 90) : FColor(255, 90, 90));
-	for (UStaticMeshComponent* V : Valves) KAPVis::Apply(Cast<UMaterialInstanceDynamic>(V->GetMaterial(0)), FKAPMat::Paint(State == EWellState::Lost ? FLinearColor(0.03f, 0.03f, 0.03f) : FLinearColor(0.55f, 0.06f, 0.04f)));
+	for (UStaticMeshComponent* V : Valves) KAPVis::Apply(KAPVis::UniqueMID(V), FKAPMat::Paint(State == EWellState::Lost ? FLinearColor(0.03f, 0.03f, 0.03f) : FLinearColor(0.55f, 0.06f, 0.04f)));
 }
 
 void AWellActor::Tick(float Dt)

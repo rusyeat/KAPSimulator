@@ -4,6 +4,9 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "LandscapeProxy.h"
+#include "UObject/StrongObjectPtr.h"
+#include "UObject/Package.h"
+#include "Hash/CityHash.h"
 
 namespace KAPVis
 {
@@ -84,6 +87,37 @@ namespace KAPVis
 		return MID;
 	}
 
+	/** Жарқырайтын/жыпылықтайтын бөлшек (шам, фара, жалын) — материалы кейін өзгереді, сондықтан өзінікі болуы керек */
+	static bool IsLiveMat(const FKAPMat& M) { return !M.Emissive.IsAlmostBlack() || (M.Grime == 0.f && M.DustTop == 0.f); }
+
+	UMaterialInterface* SharedMaterial(const FKAPMat& M)
+	{
+		// бірдей параметрлі бөлшектер бір материалды бөліседі: рендер бірдей мешті бір топпен сызады (draw call азаяды)
+		static TMap<uint64, TStrongObjectPtr<UMaterialInstanceDynamic>> Cache;
+		const float V[] = { M.Color.R, M.Color.G, M.Color.B, M.Color.A, M.Roughness, M.Metallic, M.Emissive.R, M.Emissive.G, M.Emissive.B, M.Grime, M.Rust, M.Ribs, M.RibPeriod,
+			M.Panel, M.PanelW, M.Stripes, M.DustTop, (float)M.Surface, M.VarAmt, M.VarScale, M.RustScale };
+		const uint64 K = CityHash64((const char*)V, sizeof(V));
+		if (TStrongObjectPtr<UMaterialInstanceDynamic>* F = Cache.Find(K)) if (F->IsValid()) return F->Get();
+		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(BaseMaterial(), GetTransientPackage());
+		Apply(MID, M);
+		Cache.Add(K, TStrongObjectPtr<UMaterialInstanceDynamic>(MID));
+		return MID;
+	}
+
+	UMaterialInstanceDynamic* UniqueMID(UPrimitiveComponent* C)
+	{
+		if (!C) return nullptr;
+		UMaterialInterface* Cur = C->GetMaterial(0);
+		if (UMaterialInstanceDynamic* D = Cast<UMaterialInstanceDynamic>(Cur)) if (D->GetOuter() == C) return D;
+		UMaterialInstanceDynamic* D0 = Cast<UMaterialInstanceDynamic>(Cur);
+		UMaterialInstanceDynamic* N = UMaterialInstanceDynamic::Create(D0 && D0->Parent ? D0->Parent.Get() : BaseMaterial(), C);
+		if (D0) N->CopyParameterOverrides(D0);
+		C->SetMaterial(0, N);
+		return N;
+	}
+
+	static UMaterialInterface* PartMaterial(UPrimitiveComponent* C, const FKAPMat& M) { return IsLiveMat(M) ? (UMaterialInterface*)MakeMID(C, M) : SharedMaterial(M); }
+
 	UStaticMeshComponent* Add(AActor* Owner, USceneComponent* Parent, EKAPShape S, FVector Pos, FVector Size, const FKAPMat& M, FRotator Rot, bool bCollision)
 	{
 		UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(Owner);
@@ -94,7 +128,7 @@ namespace KAPVis
 		// Негізгі пішіндер 100 см — масштаб = өлшем / 100
 		const bool bUnitCustom = (S == EKAPShape::Rock || S == EKAPShape::Bush || S == EKAPShape::Wolf || S == EKAPShape::WormSeg);
 		C->SetRelativeScale3D(bUnitCustom ? Size / 100.0 : Size / 100.0);
-		C->SetMaterial(0, MakeMID(C, M));
+		C->SetMaterial(0, PartMaterial(C, M));
 		// қадам дыбысы үшін беткей тегі
 		const uint8 Sf = M.Surface ? M.Surface : (M.Metallic > 0.3f ? 1 : (M.Ribs > 0.2f && M.RibPeriod < 20.f && M.Metallic < 0.1f) ? 2 : M.Roughness > 0.88f && M.Panel > 0.f ? 3 : 0);
 		if (Sf) C->ComponentTags.Add(Sf == 1 ? FName("SurfMetal") : Sf == 2 ? FName("SurfWood") : FName("SurfConcrete"));
@@ -135,7 +169,7 @@ namespace KAPVis
 		C->SetRelativeLocation(Pos);
 		C->SetRelativeRotation(Rot);
 		C->SetRelativeScale3D(Scale);
-		C->SetMaterial(0, MakeMID(C, M));
+		C->SetMaterial(0, PartMaterial(C, M));
 		C->SetCollisionEnabled(bCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 		C->SetCollisionProfileName(bCollision ? UCollisionProfile::BlockAll_ProfileName : UCollisionProfile::NoCollision_ProfileName);
 		C->SetCanEverAffectNavigation(false);

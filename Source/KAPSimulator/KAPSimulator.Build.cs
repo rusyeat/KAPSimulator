@@ -25,7 +25,8 @@ public class KAPSimulator : ModuleRules
 			"Landscape",
 			"AudioMixer",
 			"AudioExtensions",
-			"RenderCore"
+			"RenderCore",
+			"RHI"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

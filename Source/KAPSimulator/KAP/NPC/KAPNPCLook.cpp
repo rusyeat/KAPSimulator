@@ -18,8 +18,15 @@ namespace
 bool AKAPNPC::SetupSmoothHuman(ENPCKind InKind, float Scale)
 {
 	USkeletalMeshComponent* SK = GetMesh();
-	USkeletalMesh* Body = LoadObject<USkeletalMesh>(nullptr, bFemale ? TEXT("/Game/KAP/Characters/SKM_KAP_BodyF.SKM_KAP_BodyF") : TEXT("/Game/KAP/Characters/SKM_KAP_BodyM.SKM_KAP_BodyM"), nullptr, LOAD_NoWarn | LOAD_Quiet);
-	UMaterialInterface* HumM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Human2.M_KAP_Human2"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	const TCHAR* Variant = InKind == ENPCKind::SickChild ? TEXT("SickBoy") : InKind == ENPCKind::Girl ? TEXT("Girl") : InKind == ENPCKind::Boy ? TEXT("Boy") : bFemale ? TEXT("AdultFemale") : TEXT("AdultMale");
+	const FString NewBodyPath = FString::Printf(TEXT("/Game/KAP/Characters/V3/SKM_KAP_V3_%s.SKM_KAP_V3_%s"), Variant, Variant);
+	USkeletalMesh* Body = LoadObject<USkeletalMesh>(nullptr, *NewBodyPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+	UMaterialInterface* HumM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Characters/V3/M_KAP_Human3.M_KAP_Human3"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	if (!Body || !HumM)
+	{
+		Body = LoadObject<USkeletalMesh>(nullptr, bFemale ? TEXT("/Game/KAP/Characters/SKM_KAP_BodyF.SKM_KAP_BodyF") : TEXT("/Game/KAP/Characters/SKM_KAP_BodyM.SKM_KAP_BodyM"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		HumM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Human2.M_KAP_Human2"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	}
 	if (!SK || !Body || !HumM) return false;
 	SK->SetSkeletalMesh(Body);
 	SK->SetRelativeLocationAndRotation(FVector(0, 0, -90), FRotator(0, -90, 0));
@@ -36,6 +43,9 @@ bool AKAPNPC::SetupSmoothHuman(ENPCKind InKind, float Scale)
 	if (!bFemale && FMath::FRand() < 0.35f) Beard = FMath::FRandRange(0.25f, 0.6f); // қылтан/мұрт
 	switch (InKind)
 	{
+	case ENPCKind::Boy: Jacket = FLinearColor(0.12f, 0.23f, 0.31f); Pants = FLinearColor(0.055f, 0.075f, 0.11f); Beard = 0.f; Grime = 0.3f; break;
+	case ENPCKind::Girl: Jacket = FLinearColor(0.3f, 0.08f, 0.12f); Pants = FLinearColor(0.075f, 0.065f, 0.085f); Beard = 0.f; Grime = 0.3f; break;
+	case ENPCKind::SickChild: Skin = FLinearColor(0.36f, 0.29f, 0.21f); Jacket = FLinearColor(0.16f, 0.21f, 0.23f); Pants = FLinearColor(0.06f, 0.075f, 0.09f); Beard = 0.f; Grime = 0.5f; break;
 	case ENPCKind::Worker: Jacket = FLinearColor(0.72f, 0.3f, 0.05f); Pants = Jacket * 0.86f; Vest = FLinearColor(0.72f, 0.68f, 0.07f); VestAmt = 1.f; Stripes = 1.f; Gloves = 1.f; Hair = Jacket * 0.9f; HairLine = 0.36f; break; // капюшон
 	case ENPCKind::Militia: Jacket = FLinearColor(0.18f, 0.21f, 0.12f); Pants = FLinearColor(0.16f, 0.19f, 0.11f); Vest = FLinearColor(0.12f, 0.14f, 0.08f); VestAmt = 1.f; Gloves = 1.f; break;
 	case ENPCKind::Guard: Jacket = FLinearColor(0.07f, 0.09f, 0.15f); Pants = FLinearColor(0.05f, 0.06f, 0.1f); Vest = FLinearColor(0.04f, 0.05f, 0.08f); VestAmt = 1.f; Gloves = 1.f; break;

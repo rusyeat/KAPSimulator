@@ -28,12 +28,17 @@ public:
 	void ShowShop(FName Kind) { bShop = true; ShopKind = Kind; ShopCat = 0; bJobs = false; }
 	void ShowJobs(FName Board) { bJobs = true; JobsBoard = Board; bShop = false; }
 	/** Тест/кеңес үшін: планшетті белгілі бетпен ашу, мәзір параметрлерін көрсету */
-	void OpenTab(int32 T) { bTablet = true; Tab = T; }
+	void OpenTab(int32 T) { bTablet = true; Tab = T; bMapCentered = false; }
 	void MenuSettings(bool b) { bSettings = b; }
 	bool IsModal() const;
 	void Click(FVector2D Pos, bool bDown);
 	bool HandleKey(FName K, bool bDown);
-	void Scroll(float D) { TabletScroll = FMath::Max(0.f, TabletScroll - D * 60.f); }
+	void Scroll(float D);
+	/** Толық экран карта (M) — KAPHUDMap.cpp */
+	void ToggleMap() { bMap = !bMap; bMapCentered = false; bMapDrag = false; if (bMap) bTablet = false; }
+	bool IsMapOpen() const { return bMap; }
+	/** Тест үшін: карта ортасы, масштабы және (қаласаңыз) тінтуірдің әлемдегі орны */
+	void MapDebug(FVector2D C, float Z, FVector2D MouseW = FVector2D(1e9, 1e9)) { MapCenter = C; MapZoom = Z; bMapCentered = true; MapTestMouseW = MouseW; bMapTestMouse = MouseW.X < 1e8; }
 	float Fade = 0.f;
 
 private:
@@ -87,6 +92,20 @@ private:
 	int32 ShopCat = 0, LastMoney = -1, MoneyDelta = 0;
 	float MoneyT = 0.f;
 	UTexture2D* MapTexture();
+	// ---- нақты карта (KAPHUDMap.cpp) ----
+	UTexture2D* CaptureWorldMap();
+	void DrawWorldMap(float X, float Y, float W, float H, bool bFull);
+	void DrawFullMap();
+	void MapIcon(int32 Type, FVector2D C, float R, FLinearColor Col, const FString& Num, bool bHover);
+	void FillTri(FVector2D A, FVector2D B, FVector2D C, FLinearColor Col);
+	void MapRelease();
+	bool bMap = false, bMapDrag = false, bMapCentered = false, bMapCaptureTried = false;
+	float MapZoom = 1.f, MapScale = 1.f;
+	FVector2D MapCenter = FVector2D::ZeroVector, MapDragStart = FVector2D::ZeroVector, MapDragCenter = FVector2D::ZeroVector, MapHoverP = FVector2D::ZeroVector;
+	FBox2D MapView = FBox2D(ForceInit);
+	FString MapHoverTitle;
+	uint32 MapLayers = 0x1FF;
+	FVector2D MapTestMouseW = FVector2D::ZeroVector; bool bMapTestMouse = false;
 
 	// ---- күй ----
 	struct FToast { FString Msg; FName Kind; float T; };

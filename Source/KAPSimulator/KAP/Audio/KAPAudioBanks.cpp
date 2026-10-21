@@ -7,6 +7,8 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Misc/ScopeExit.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 
 uint32 UKAPAudio::VoHash(const FString& S)
 {
@@ -77,6 +79,14 @@ void UKAPAudio::StopSpeech() { if (SpeechC) { SpeechC->FadeOut(0.2f, 0.f); Speec
 
 void UKAPAudio::ShotAt(FName Weapon, FVector Loc)
 {
+	// алыстағы мылтық (45 м+): ашық далада жаңғырған нақты атыс жазбасы (freesound CC0, mchrpt)
+	const APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	const FVector Lis = PC && PC->PlayerCameraManager ? PC->PlayerCameraManager->GetCameraLocation() : Loc;
+	if (Weapon != "pm" && Weapon != "shotgun" && FVector::Dist(Lis, Loc) > 4500.f && HasBank("GunRifle"))
+	{
+		PlayBank("GunRifle", Loc, 1.f, FMath::FRandRange(0.88f, 1.02f), false, 0.f, true);
+		return;
+	}
 	const FName B = Weapon == "sniper" ? FName("GunSniper") : Weapon == "shotgun" ? FName("GunShotgun") : Weapon == "pm" ? FName("GunPM") : FName("GunAK");
 	PlayBank(B, Loc, 1.f, FMath::FRandRange(0.94f, 1.04f), false, 0.f, true);
 }

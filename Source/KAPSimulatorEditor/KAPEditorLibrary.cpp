@@ -42,6 +42,9 @@
 #include "Materials/MaterialExpressionCosine.h"
 #include "Materials/MaterialExpressionNormalize.h"
 #include "Materials/MaterialExpressionDotProduct.h"
+#include "Materials/MaterialExpressionPower.h"
+#include "Materials/MaterialExpressionDepthFade.h"
+#include "Materials/MaterialExpressionCameraVectorWS.h"
 #include "Materials/MaterialExpressionCrossProduct.h"
 #include "MaterialEditingLibrary.h"
 #include "Factories/MaterialFactoryNew.h"
@@ -689,6 +692,30 @@ bool UKAPEditorLibrary::CreateAtmosphereMaterials()
 		auto* Om = Expr<UMaterialExpressionOneMinus>(M, -550, 200);
 		UMaterialEditingLibrary::ConnectMaterialExpressions(Fr, TEXT(""), Om, TEXT(""));
 		UMaterialEditingLibrary::ConnectMaterialProperty(Mul(M, SParam(M, TEXT("Opacity"), 0.7f, -550, 300), Om, -300, 250), TEXT(""), MP_Opacity);
+		Usages(M);
+		UMaterialEditingLibrary::RecompileMaterial(M);
+		SaveAsset(M);
+	}
+	// ---- M_KAP_Dust2: жұмсақ шаң бұлты — шеті біртіндеп мөлдір (N·V)^2.4, жерге тиген жері сөнеді (DepthFade),
+	//      көлемдік жарықпен жанады (шар сияқты көлеңкеленбейді, прожектор/фонарь сәулесінде жарқырайды) ----
+	if (!Exists(TEXT("M_KAP_Dust2")))
+	{
+		UMaterial* M = NewMaterial(TEXT("M_KAP_Dust2"));
+		M->BlendMode = BLEND_Translucent;
+		M->SetShadingModel(MSM_DefaultLit);
+		M->TranslucencyLightingMode = TLM_VolumetricNonDirectional;
+		UMaterialEditingLibrary::ConnectMaterialProperty(VParam(M, TEXT("Color"), FLinearColor(0.85f, 0.8f, 0.72f), -500, -100), TEXT(""), MP_BaseColor);
+		UMaterialEditingLibrary::ConnectMaterialProperty(K(M, 1.f, -500, 0), TEXT(""), MP_Roughness);
+		UMaterialEditingLibrary::ConnectMaterialProperty(K(M, 0.f, -500, 60), TEXT(""), MP_Specular);
+		auto* Nw = Expr<UMaterialExpressionVertexNormalWS>(M, -1400, 200);
+		auto* Cv = Expr<UMaterialExpressionCameraVectorWS>(M, -1400, 300);
+		UMaterialExpression* NdV = Sat(M, Op2<UMaterialExpressionDotProduct>(M, Nw, Cv, -1250, 250), -1100, 250);
+		auto* Pw = Expr<UMaterialExpressionPower>(M, -950, 250); Pw->ConstExponent = 2.4f;
+		UMaterialEditingLibrary::ConnectMaterialExpressions(NdV, TEXT(""), Pw, TEXT(""));
+		UMaterialExpression* Op = Mul(M, SParam(M, TEXT("Opacity"), 0.5f, -950, 380), Pw, -800, 300);
+		auto* Df = Expr<UMaterialExpressionDepthFade>(M, -650, 300); Df->FadeDistanceDefault = 250.f;
+		UMaterialEditingLibrary::ConnectMaterialExpressions(Op, TEXT(""), Df, TEXT(""));
+		UMaterialEditingLibrary::ConnectMaterialProperty(Df, TEXT(""), MP_Opacity);
 		Usages(M);
 		UMaterialEditingLibrary::RecompileMaterial(M);
 		SaveAsset(M);
