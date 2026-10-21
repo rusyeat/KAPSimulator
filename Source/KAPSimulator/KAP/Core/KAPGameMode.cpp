@@ -1,5 +1,6 @@
 ﻿#include "KAPGameMode.h"
 #include "KAP/Core/KAPRegistry.h"
+#include "Engine/Engine.h"
 #if WITH_EDITOR
 #include "TextureCompiler.h"
 #endif
@@ -73,6 +74,8 @@ AKAPCharacter* AKAPGameMode::Player() const { return AKAPCharacter::Get(this); }
 void AKAPGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+	// қозғалтқыштың экрандағы дебаг хабарламалары («Preparing SoundWaves» т.б.) ойыншыға көрінбейді; -kapdebug — қалдырады
+	if (!FParse::Param(FCommandLine::Get(), TEXT("kapdebug"))) { GAreScreenMessagesEnabled = false; if (GEngine) GEngine->bEnableOnScreenDebugMessages = false; }
 #if WITH_EDITOR
 	// редактор жинағында (-game) асинхронды компиляцияланатын текстуралар дайын болсын (құм, т.б.)
 	FTextureCompilingManager::Get().FinishAllCompilation();
@@ -88,6 +91,7 @@ void AKAPGameMode::BeginPlay()
 	AKAPFXManager::Get(GetWorld());
 	Builder = GetWorld()->SpawnActor<AKAPWorldBuilder>();
 	Builder->BuildAll();
+	BuildEconomyPlaces();
 	// ---- кинематографиялық атмосфера: прожектор бағандары, шаң, іздер ----
 	if (AKAPAtmosphere* Atm = AKAPAtmosphere::Get(GetWorld()))
 	{
@@ -143,6 +147,99 @@ void AKAPGameMode::BeginPlay()
 				FTimerHandle Hb; GetWorldTimerManager().SetTimer(Hb, FTimerDelegate::CreateLambda([Shot, Vid, v]() { Shot(Vid.ToString() + (v ? TEXT("_b") : TEXT("_a"))); }), T + 1.6f, false);
 			}
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 14.f + 6 * 4.f + 2.f, false);
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapnpcshots")))
+	{
+		// Кейіпкерлерді тексеру: барлық түр қатарға тұрады (қозғалмайды), күндізгі жарық, жалпы және жақын кадрлар
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPN_") + N + TEXT(".png"), true, false); };
+		FTimerHandle H0; GetWorldTimerManager().SetTimer(H0, FTimerDelegate::CreateLambda([this]() { MenuNewGame(); }), 3.f, false);
+		FTimerHandle H1; GetWorldTimerManager().SetTimer(H1, FTimerDelegate::CreateLambda([this]() { SkipCinematic(); }), 10.f, false);
+		TSharedRef<TArray<TWeakObjectPtr<AKAPNPC>>> Row = MakeShared<TArray<TWeakObjectPtr<AKAPNPC>>>();
+		FTimerHandle H2; GetWorldTimerManager().SetTimer(H2, FTimerDelegate::CreateLambda([this, Row]()
+		{
+			Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true;
+			S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5;
+			AKAPCharacter* P = Player(); if (!P) return;
+			const FVector Pl = P->GetActorLocation(); const FVector F = FVector(1, 0, 0), Rt = FVector(0, 1, 0);
+			static const ENPCKind Kinds[] = { ENPCKind::Worker, ENPCKind::Police, ENPCKind::Soldier, ENPCKind::Bandit, ENPCKind::Trader, ENPCKind::Villager, ENPCKind::Villager, ENPCKind::Mother, ENPCKind::Elder, ENPCKind::Irradiated };
+			for (int32 i = 0; i < (int32)UE_ARRAY_COUNT(Kinds); i++)
+			{
+				const FVector W = Pl + F * 520.f + Rt * ((i - 4.5f) * 95.f);
+				if (AKAPNPC* N = SpawnNPC((int32)Kinds[i], KAP::CM2M(W), FString::Printf(TEXT("T%d"), i), true))
+				{
+					N->SetActorTickEnabled(false); N->GetCharacterMovement()->DisableMovement();
+					N->SetActorLocation(FVector(W.X, W.Y, KAPVis::GroundZ(GetWorld(), W.X, W.Y, Pl.Z) + 92.f));
+					N->SetActorRotation(FRotator(0, 180, 0));
+					Row->Add(N);
+				}
+			}
+			if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->SetControlRotation(FRotator(-4, 0, 0));
+		}), 13.f, false);
+		FTimerHandle H3; GetWorldTimerManager().SetTimer(H3, FTimerDelegate::CreateLambda([Shot]() { Shot(TEXT("row")); }), 16.f, false);
+		// жақын кадрлар: әр кейіпкердің алдынан
+		for (int32 i = 0; i < 10; i++)
+		{
+			FTimerHandle Ha; GetWorldTimerManager().SetTimer(Ha, FTimerDelegate::CreateLambda([this, Row, i]()
+			{
+				if (!Row->IsValidIndex(i) || !(*Row)[i].IsValid()) return;
+				AKAPNPC* N = (*Row)[i].Get(); AKAPCharacter* P = Player(); if (!P) return;
+				const FVector C = N->GetActorLocation(); const FVector Sd = C + FVector(-210.f, 60.f, 0);
+				P->SetActorLocation(FVector(Sd.X, Sd.Y, KAPVis::GroundZ(GetWorld(), Sd.X, Sd.Y, C.Z) + 100.f));
+				if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->SetControlRotation(FRotator(-6, (C - Sd).Rotation().Yaw, 0));
+			}), 17.f + i * 1.6f, false);
+			FTimerHandle Hb; GetWorldTimerManager().SetTimer(Hb, FTimerDelegate::CreateLambda([Shot, i]() { Shot(FString::Printf(TEXT("%02d"), i)); }), 18.f + i * 1.6f, false);
+		}
+		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 36.f, false);
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapecontest")))
+	{
+		// Экономиканы тексеру: мәзір (+параметрлер), полиция бөлімі, жұмыс тақтасы, планшет, дүкен, әскери аймақ (күндіз/түн)
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPE_") + N + TEXT(".png"), true, false); };
+		auto Go = [this](FVector2D Pm, float Yaw, float Pitch = -6.f)
+		{
+			if (AKAPCharacter* P = Player())
+			{
+				P->SetActorLocation(FVector(Pm.X * 100, Pm.Y * 100, KAPVis::GroundZ(GetWorld(), Pm.X * 100, Pm.Y * 100, 0) + 110), false, nullptr, ETeleportType::TeleportPhysics);
+				if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) PC->SetControlRotation(FRotator(Pitch, Yaw, 0));
+			}
+		};
+		auto LocP = [this](FName Id) { const FKAPLocationRow* R = UKAPDataSubsystem::Get(this)->Loc(Id); return R ? FVector2D(R->X, R->Y) : FVector2D::ZeroVector; };
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 2.5f, [Shot]() { Shot(TEXT("01_menu")); } },
+			{ 3.0f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->MenuSettings(true); } },
+			{ 3.6f, [Shot]() { Shot(TEXT("02_menu_settings")); } },
+			{ 4.0f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->MenuSettings(false); MenuNewGame(); } },
+			{ 10.f, [this]() { SkipCinematic(); } },
+			{ 13.f, [this, Go, LocP]() { Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5; S().bPermitWeapon = true; S().bHasTablet = true; S().Money = 25000; Go(LocP("police") + FVector2D(-34, 6), -10.f); } },
+			{ 15.5f, [Shot]() { Shot(TEXT("03_police")); } },
+			{ 16.f, [this]() { if (TWeakObjectPtr<AKAPNPC>* N = NamedNPC.Find("police")) if (N->IsValid()) Talk(N->Get()); } },
+			{ 16.8f, [Shot]() { Shot(TEXT("04_police_talk")); } },
+			{ 17.2f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) { H->CloseAll(); H->ShowJobs("police"); } } },
+			{ 18.f, [Shot]() { Shot(TEXT("05_jobs")); } },
+			{ 18.4f, [this]() { TArray<FKAPContract*> O = ContractsOf("police", 0); if (O.Num()) AcceptContract(O[0]->Uid); TArray<FKAPContract*> O2 = ContractsOf("trader", 0); if (O2.Num()) AcceptContract(O2[0]->Uid); if (AKAPHUD* H = AKAPHUD::Get(this)) { H->CloseAll(); H->OpenTab(4); } } },
+			{ 19.2f, [Shot]() { Shot(TEXT("06_tablet_jobs")); } },
+			{ 19.6f, [this, Go, LocP]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->CloseAll(); Go(LocP("shop") + FVector2D(9, 3), 200.f, -8.f); } },
+			{ 21.5f, [Shot]() { Shot(TEXT("07_shop_outside")); } },
+			{ 22.f, [this]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->ShowShop("trader"); } },
+			{ 22.8f, [Shot]() { Shot(TEXT("08_shop")); } },
+			{ 23.2f, [this]() { for (const FShopItem& It : ShopItems()) if (It.Id == "ak" || It.Id == "545" || It.Id == "armor") Buy(It, "trader"); UE_LOG(LogTemp, Display, TEXT("KAPECON bought: ak=%d ammo545=%d armor=%d money=%d"), S().Weapons.Contains("ak") ? 1 : 0, S().Ammo.FindRef("545"), S().Inv.FindRef("armor"), S().Money); if (AKAPHUD* H = AKAPHUD::Get(this)) H->ShowShop("trader"); } },
+			{ 24.f, [Shot]() { Shot(TEXT("09_shop_bought")); } },
+			{ 24.5f, [this, Go]() { if (AKAPHUD* H = AKAPHUD::Get(this)) H->CloseAll(); Go(ArmyC + FVector2D(-ArmyHalf.X - 40, 22), -20.f, -4.f); } },
+			{ 27.f, [Shot]() { Shot(TEXT("10_army_gate")); } },
+			{ 27.5f, [this, Go]() { Go(ArmyC + FVector2D(-20, -10), 30.f, -6.f); } },
+			{ 30.f, [Shot]() { Shot(TEXT("11_army_inside")); } },
+			{ 36.f, [this, Shot]() { UE_LOG(LogTemp, Display, TEXT("KAPECON army: inZone=%d warn=%d hostile=%.1f"), InArmyZone(KAP::CM2M(Player()->GetActorLocation())) ? 1 : 0, ArmyWarnStage, ArmyHostile); Shot(TEXT("12_army_warn")); } },
+			{ 37.f, [this, Go]() { ArmyHostile = 0.f; ArmyWarnStage = 0; ArmyInT = 0.f; S().Flags.Add("armyPass", 1); Go(ArmyC + FVector2D(-ArmyHalf.X - 9, -2), 0.f, -4.f); } },
+			{ 46.5f, [Shot]() { Shot(TEXT("13_army_officer")); } },
+			{ 47.f, [this, Go]() { S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 23.2; Go(ArmyC + FVector2D(-ArmyHalf.X - 30, 30), -30.f, -5.f); } },
+			{ 50.f, [Shot]() { Shot(TEXT("14_army_night")); } },
+			{ 51.f, [this, Go]() { for (FKAPContract* C : ContractsOf(NAME_None, 1)) if (C->Type == "deliver") { UE_LOG(LogTemp, Display, TEXT("KAPECON deliver start: money=%d cargo=%d"), S().Money, Count("cargo")); Go(C->Points[0], 0.f); } } },
+			{ 53.f, [this]() { int32 Nd = 0; for (FKAPContract& C : S().Contracts) if (C.Type == "deliver") Nd = C.State; UE_LOG(LogTemp, Display, TEXT("KAPECON deliver: state=%d money=%d cargo=%d"), Nd, S().Money, Count("cargo")); for (FKAPContract* C : ContractsOf(NAME_None, 1)) if (C->Type == "bounty") { int32 K = 0; for (KAPReg::TIter<AKAPNPC> It(GetWorld(), KAPReg::NPCs()); It; ++It) if (It->ContractUid == C->Uid && !It->bDead) { UGameplayStatics::ApplyDamage(*It, 9999.f, nullptr, Player(), nullptr); K++; } UE_LOG(LogTemp, Display, TEXT("KAPECON bounty: killed %d"), K); } } },
+			{ 54.f, [this]() { for (FKAPContract& C : S().Contracts) if (C.Type == "bounty") UE_LOG(LogTemp, Display, TEXT("KAPECON bounty: state=%d have=%d/%d money=%d"), C.State, C.Have, C.Need, S().Money); } },
+			{ 55.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
 	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapautotest")))
 	{
@@ -368,6 +465,7 @@ void AKAPGameMode::SpawnPersistentNPCs()
 	}
 	if (!Ss.Flags.Contains("missingFound"))
 		if (AKAPNPC* N = Mk(ENPCKind::Worker, L("missing"), TEXT("Нұрлан Есенов"), "nurlan")) { N->bSick = true; N->WanderR = 1; NamedNPC.Add("nurlan", N); }
+	SpawnEconomyNPCs();
 }
 
 // =====================================================================
@@ -546,6 +644,7 @@ void AKAPGameMode::Tick(float Dt)
 	Simulate(Dt);
 	Director(Dt);
 	StoryTick(Dt);
+	ContractTick(Dt);
 	Acc1 += Dt; Acc2 += Dt; Acc15 += Dt;
 	if (Acc1 > 1) { Acc1 = 0; UpdateTrackers(); RefreshDangerZones(); }
 	if (Acc2 > 2) { Acc2 = 0; GetWorld()->GetSubsystem<UWellManagerSubsystem>()->UpdatePredictions(Ss, Weather->Env.Temp); }
@@ -845,6 +944,7 @@ void AKAPGameMode::OnActorKilled(AKAPNPC* N, bool bByPlayer)
 	FKAPSession& Ss = S();
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	if (bByPlayer) Ss.Kills++;
+	ContractKill(N, bByPlayer);
 	const FVector2D Nm = KAP::CM2M(N->GetActorLocation());
 	auto L = [&](FName Id) { const FKAPLocationRow* R = D->Loc(Id); return R ? FVector2D(R->X, R->Y) : FVector2D::ZeroVector; };
 	auto Drop = [&](TMap<FName, int32> Items)
@@ -937,6 +1037,7 @@ void AKAPGameMode::OnWellRepaired(int32 Index, bool bByBrigade)
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	UKAPAudio::Get(this)->Play(EKAPSound::RepairDone, 0.7f);
 	if (!bByBrigade) Toast(FString::Printf(TEXT("№%d ұңғыма жөнделді! Жұмысшылар қауіпсіз."), Index + 1), "ok");
+	if (!bByBrigade) AddMoney(250, FString::Printf(TEXT("QazUran: №%d ұңғыманы жөндегені үшін"), Index + 1));
 	if (Index == 0 && QuestState("m_fix1") == EQuestState::Active)
 	{
 		CompleteQuest("m_fix1"); StartQuest("m_guard");
@@ -1047,6 +1148,7 @@ void AKAPGameMode::OpenCrate(FName Id)
 
 FString AKAPGameMode::SpotText(const AKAPInteractSpot* Sp) const
 {
+	{ const FString E = EconomySpotText(Sp); if (!E.IsEmpty()) return E; }
 	const FKAPSession& Ss = S();
 	const FString A = Sp->Action.ToString();
 	if (A == TEXT("tablet")) return Ss.bHasTablet ? FString() : TEXT("Планшетті алу");
@@ -1064,6 +1166,7 @@ FString AKAPGameMode::SpotText(const AKAPInteractSpot* Sp) const
 
 void AKAPGameMode::SpotUse(AKAPInteractSpot* Sp)
 {
+	if (EconomySpotUse(Sp)) return;
 	FKAPSession& Ss = S();
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	const FString A = Sp->Action.ToString();
@@ -1257,6 +1360,7 @@ void AKAPGameMode::StoryTick(float Dt)
 void AKAPGameMode::Talk(AKAPNPC* N)
 {
 	TalkNPC = N;
+	if (EconomyTalk(N)) return; // полиция, сатушы, әскер (KAPEconomy.cpp)
 	FKAPSession& Ss = S();
 	const int32 Day = FMath::FloorToInt32(Ss.Time / 24.0);
 	auto PartsGift = [this, Day, &Ss](FName Who) -> FKAPDialogOption
@@ -1588,7 +1692,7 @@ void AKAPGameMode::Intro()
 		}
 		StartQuest("m_shelter", false);
 		Subtitle(TEXT("Баспана табыңыз"), TEXT("Найдите укрытие"), FString(), 6);
-		Toast(TEXT("Бағдар — вагон-үй шамының жарығы. WASD — жүру, тышқан — қарау, E — әрекет, Tab — планшет."), "info");
+		Toast(TEXT("Бағдар — вагон-үй шамының жарығы. WASD — жүру, тышқан — қарау, E — әрекет, Tab — планшет, Q — көрсеткіштер."), "info");
 	});
 }
 

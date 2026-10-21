@@ -105,7 +105,7 @@ namespace KAPVGen
 		if (No >= 3) Clip(Ou, No, Mi + 1, Masks, Outs, F, E);
 	}
 
-	/** SDF → меш(тер): SM_KAP_Veh_<Name>_<аймақ> */
+	/** SDF → меш(тер): <Name>_<аймақ> */
 	static int32 BuildShell(const FString& Name, const FSdf& F, const TArray<FMask>& Masks, V3 Lo, V3 Hi, float H)
 	{
 		const int32 Nx = FMath::CeilToInt((Hi.X - Lo.X) / H) + 1, Ny = FMath::CeilToInt((Hi.Y - Lo.Y) / H) + 1, Nz = FMath::CeilToInt((Hi.Z - Lo.Z) / H) + 1;
@@ -180,7 +180,7 @@ namespace KAPVGen
 		int32 Total = 0;
 		for (int32 r = 0; r < Outs.Num(); r++)
 		{
-			const FString N = FString::Printf(TEXT("SM_KAP_Veh_%s_%d"), *Name, r);
+			const FString N = FString::Printf(TEXT("%s_%d"), *Name, r);
 			FMeshBuild& B = Outs[r].B;
 			UE_LOG(LogTemp, Display, TEXT("KAPVEH %s: %d verts, %d tris"), *N, B.P.Num(), B.Idx.Num() / 3);
 			if (B.Idx.Num() < 3) continue;
@@ -313,7 +313,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		M.Add({ Dark, [](const V3& P) { return P.Z - 49.f; } });
 		// брезент (екінші материал)
 		M.Add({ Second, [](const V3& P) { return FMath::Max(119.5f - P.Z, P.X - 49.f); } });
-		Tot += BuildShell(TEXT("uaz469"), F, M, V3(-205, -96, 36), V3(200, 96, 210), 2.2f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_uaz469"), F, M, V3(-205, -96, 36), V3(200, 96, 210), 2.2f);
 	}
 
 	// ================= УАЗ-452 «Буханка» =================
@@ -353,7 +353,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		M.Add({ Dark, [](const V3& P) { return P.Z - 43.f; } });
 		// жоғарғы бөлік — екінші түс (ақшыл)
 		M.Add({ Second, [](const V3& P) { return 112.f - P.Z; } });
-		Tot += BuildShell(TEXT("bukhanka"), F, M, V3(-228, -102, 24), V3(222, 102, 212), 2.3f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_bukhanka"), F, M, V3(-228, -102, 24), V3(222, 102, 212), 2.3f);
 	}
 
 	// ================= ВАЗ-2121 «Нива» =================
@@ -395,7 +395,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		M.Add({ Dark, [](const V3& P) { return FMath::Max(FMath::Abs(P.Z - 70.f) - 2.2f, 79.f - FMath::Abs(P.Y)); } });   // бүйір молдинг
 		M.Add({ Dark, [Xa, Ra](const V3& P) { const float Ya = FMath::Abs(P.Y); const float Dw = FMath::Min(FMath::Sqrt(FMath::Square(P.X - Xa) + FMath::Square(P.Z - 36.f)), FMath::Sqrt(FMath::Square(P.X + Xa) + FMath::Square(P.Z - 36.f))); return FMath::Max(Dw - (Ra + 6.f), FMath::Max(50.f - Ya, Ya - 87.f)); } });
 		M.Add({ Dark, [](const V3& P) { return P.Z - 31.f; } });
-		Tot += BuildShell(TEXT("niva"), F, M, V3(-198, -92, 22), V3(192, 92, 170), 2.0f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_niva"), F, M, V3(-198, -92, 22), V3(192, 92, 170), 2.0f);
 	}
 
 	// ================= КамАЗ кабинасы (су тасушымен ортақ) =================
@@ -421,7 +421,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		M.Add({ Dark, [](const V3& P) { float D = 1e9f; for (int32 i = 0; i < 5; i++) { const float Z = 146.f + i * 11.f; D = FMath::Min(D, Rect2(P.Y, P.Z, -92, 92, Z - 3.f, Z + 3.f, 1.5f)); } return FMath::Max(D, 272.f - P.X); } });
 		M.Add({ Dark, [](const V3& P) { return FMath::Max(Seam(P.X, P.Z, 162, 276, 122, 300, 6), 118.f - FMath::Abs(P.Y)); } });
 		M.Add({ Dark, [](const V3& P) { return P.Z - 121.f; } });
-		Tot += BuildShell(TEXT("kamaz"), F, M, V3(70, -132, 40), V3(296, 132, 322), 3.0f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_kamaz"), F, M, V3(70, -132, 40), V3(296, 132, 322), 3.0f);
 	}
 	// ================= су цистернасы =================
 	{
@@ -434,7 +434,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		};
 		TArray<FMask> M;
 		M.Add({ Trim, [](const V3& P) { float D = 1e9f; for (float Xr : { -262.f, -130.f, 2.f }) D = FMath::Min(D, FMath::Abs(P.X - Xr) - 3.6f); return FMath::Min(D, 284.5f - P.Z); } });
-		Tot += BuildShell(TEXT("watertank"), F, M, V3(-342, -122, 114), V3(82, 122, 300), 3.0f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_watertank"), F, M, V3(-342, -122, 114), V3(82, 122, 300), 3.0f);
 	}
 
 	// ================= БТР-80 тектес бронетранспортер =================
@@ -469,7 +469,7 @@ bool UKAPEditorLibrary::CreateVehicleMeshes()
 		M.Add({ Dark, [](const V3& P) { return FMath::Max(FMath::Abs(P.Z - 202.f) - 1.5f, FMath::Sqrt(FMath::Square(P.X - 80.f) + FMath::Square(P.Y)) - 70.f); } });
 		M.Add({ Dark, [=](const V3& P) { const float Ya = FMath::Abs(P.Y); float Dw = 1e9f; for (int32 i = 0; i < 4; i++) Dw = FMath::Min(Dw, FMath::Sqrt(FMath::Square(P.X - Ax[i]) + FMath::Square(P.Z - S.R))); return FMath::Max(Dw - (Ra + 2.5f), FMath::Max(Yin - 3.f - Ya, Ya - 150.f)); } });
 		M.Add({ Dark, [](const V3& P) { return P.Z - 49.f; } });
-		Tot += BuildShell(TEXT("btr"), F, M, V3(-456, -155, 36), V3(321, 155, 250), 3.0f);
+		Tot += BuildShell(TEXT("SM_KAP_Veh_btr"), F, M, V3(-456, -155, 36), V3(321, 155, 250), 3.0f);
 	}
 	UE_LOG(LogTemp, Display, TEXT("KAPVEH done: %d triangles, %.1f s"), Tot, FPlatformTime::Seconds() - T0);
 	return Tot > 0;

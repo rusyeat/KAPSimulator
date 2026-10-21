@@ -327,7 +327,7 @@ void AKAPVehicleHandle::BuildBody()
 			B.CylZ(FVector((Xbk + Xc) * 0.5f, 0, Zf + 78.f + (W - 30.f) * 0.5f), 50.f, 12.f, Steel);
 			UTextRenderComponent* T = NewObject<UTextRenderComponent>(Pawn);
 			T->SetupAttachment(M); T->SetRelativeLocation(FVector((Xbk + Xc) * 0.5f, Hw - 12.f, Zf + 78.f)); T->SetRelativeRotation(FRotator(0, 90, 0));
-			T->SetText(FText::FromString(TEXT("СУ / ВОДА"))); T->SetHorizontalAlignment(EHTA_Center); T->SetWorldSize(32.f); T->SetTextRenderColor(FColor(40, 60, 140)); T->RegisterComponent();
+			KAPVis::SignText(T); T->SetText(FText::FromString(TEXT("СУ / ВОДА"))); T->SetHorizontalAlignment(EHTA_Center); T->SetWorldSize(32.f); T->SetTextRenderColor(FColor(40, 60, 140)); T->RegisterComponent();
 		}
 		else
 		{

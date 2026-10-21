@@ -103,6 +103,8 @@ void AKAPNPC::Setup(ENPCKind InKind, const FString& InName, float Scale, bool bI
 	case ENPCKind::Worker: Faction = EKAPFaction::Worker; break;
 	case ENPCKind::Militia: Faction = EKAPFaction::Militia; Policy = KAPAI::EQProfile::Militia; Hp = 100; Dmg = 10; RangeM = 55; break;
 	case ENPCKind::Guard: Faction = EKAPFaction::Guard; Policy = KAPAI::EQProfile::Militia; Hp = 100; Dmg = 10; RangeM = 55; break;
+	case ENPCKind::Police: Faction = EKAPFaction::Militia; Policy = KAPAI::EQProfile::Militia; Hp = 110; Dmg = 9; RangeM = 50; break;
+	case ENPCKind::Soldier: Faction = EKAPFaction::Guard; Policy = KAPAI::EQProfile::Militia; Hp = 150; Dmg = 14; RangeM = 75; break;
 	case ENPCKind::Bandit: Faction = EKAPFaction::Bandit; Policy = KAPAI::EQProfile::Bandit; Hp = 100; Dmg = 9; RangeM = 55; break;
 	case ENPCKind::Irradiated: Faction = EKAPFaction::Monster; bMelee = true; Hp = 160; Dmg = 20; RangeM = 1.9f; WalkSpeed = 220; RunSpeed = 340; break;
 	case ENPCKind::Wolf: Faction = EKAPFaction::Monster; bMelee = true; Hp = 45; Dmg = 8; RangeM = 1.7f; WalkSpeed = 400; RunSpeed = 1000; break;
@@ -112,7 +114,8 @@ void AKAPNPC::Setup(ENPCKind InKind, const FString& InName, float Scale, bool bI
 	if (bBoss) { Hp = 900; Dmg = 30; RangeM *= 1.9f; }
 	MaxHp = Hp;
 	SetActorScale3D(FVector(Scale));
-	if (IsHuman())
+	if (IsHuman() && SetupSmoothHuman(InKind, Scale)) {}
+	else if (IsHuman())
 	{
 		if (USkeletalMesh* M = LoadObject<USkeletalMesh>(nullptr, bFemale ? TEXT("/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple") : TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple")))
 		{
@@ -418,6 +421,8 @@ bool AKAPNPC::IsHostileToPlayer() const
 {
 	if (bDead) return false;
 	if (Faction == EKAPFaction::Monster || Faction == EKAPFaction::Bandit) return true;
+	// сарбаздар: әскери аймаққа рұқсатсыз кірген ойыншыға ескертуден кейін оқ атады
+	if (Kind == ENPCKind::Soldier) if (const AKAPGameMode* GM0 = AKAPGameMode::Get(this)) if (GM0->ArmyHostile > 0.f) return true;
 	if (Faction == EKAPFaction::Militia || Faction == EKAPFaction::Guard)
 	{
 		const UKAPGameInstance* GI = UKAPGameInstance::Get(this);
@@ -804,6 +809,9 @@ void AKAPNPC::Bark(float DistP)
 	case ENPCKind::Militia: L = IsHostileToPlayer() ? TArray<const TCHAR*>{ TEXT("Тоқта! Атамын!") } : TArray<const TCHAR*>{ TEXT("Ауылда тәртіп сақта."), TEXT("Мутанттарды көрдің бе?"), TEXT("Түнгі күзет — ең ауыры.") }; break;
 	case ENPCKind::Guard: L = GI->S.bPermitWeapon ? TArray<const TCHAR*>{ TEXT("Жолың болсын, инженер."), TEXT("Абай бол, дала қауіпті.") } : TArray<const TCHAR*>{ TEXT("Кеніш аумағы. Құжатың бар ма?"), TEXT("Рұқсатсыз қару ұстама.") }; break;
 	case ENPCKind::Survivor: L = { TEXT("Көмектесіңіз... біз мұнда үш күннен бері..."), TEXT("Ол түнде келеді... алып...") }; break;
+	case ENPCKind::Police: L = { TEXT("Ақсай полициясы. Тәртіп сақтаңыз."), TEXT("Бандиттерді көрсеңіз — бізге хабарлаңыз."), TEXT("Капитанда сізге жұмыс бар."), TEXT("Түнде жолға жалғыз шықпаңыз.") }; break;
+	case ENPCKind::Soldier: L = { TEXT("Әскери аймақ. Құжатыңызды дайындаңыз."), TEXT("Майор жұмыс береді — қақпаның жанында."), TEXT("Түнде ұядан бір нәрсе шығады..."), TEXT("Рұқсатсыз ішке кірмеңіз.") }; break;
+	case ENPCKind::Trader: L = { TEXT("Келіңіз, тауар таза, баға әділ!"), TEXT("Оқ-дәрі керек пе? Менде бар."), TEXT("Сынық металл әкелсеңіз, сатып аламын.") }; break;
 	default: return;
 	}
 	if (!L.Num()) return;
@@ -905,4 +913,15 @@ void AKAPNPC::StalkerTick(float Dt, AKAPCharacter* PC, float DistP)
 		return;
 	}
 	if (StalkLife > 100.f || (GM && GM->Weather && !GM->Weather->Env.bNight)) Destroy();
+}
+
+// Әскери аймақ: рұқсатсыз кірген ойыншыға ескерту (субтитр + жазылған дауыс)
+void AKAPNPC::ArmyWarn(int32 Stage)
+{
+	static const TCHAR* Kk[3] = { TEXT("Тоқта! Бұл әскери аймақ! Кері қайт!"), TEXT("Соңғы ескерту! Аймақтан шық, әйтпесе атамыз!"), TEXT("Атыңдар!") };
+	static const TCHAR* Ru[3] = { TEXT("Стой! Это военная зона! Назад!"), TEXT("Последнее предупреждение! Покинь зону, или открываем огонь!"), TEXT("Огонь!") };
+	const int32 S = FMath::Clamp(Stage, 0, 2);
+	if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Subtitle(Kk[S], Ru[S], DisplayName, 4.f);
+	if (UKAPAudio* A = UKAPAudio::Get(this)) if (!A->Speak(Kk[S], GetActorLocation() + FVector(0, 0, 60), false, 0, 1.6f, 0.95f)) A->Voice(GetActorLocation() + FVector(0, 0, 60), 1.4f, false, 1.4f);
+	if (AKAPCharacter* P = AKAPCharacter::Get(this)) SetActorRotation(FRotator(0, (P->GetActorLocation() - GetActorLocation()).Rotation().Yaw, 0));
 }

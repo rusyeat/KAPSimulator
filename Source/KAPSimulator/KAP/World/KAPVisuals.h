@@ -5,6 +5,8 @@
 #include "Components/StaticMeshComponent.h"
 
 class UMaterialInstanceDynamic;
+class UTextRenderComponent;
+class UFont;
 
 // Cube/Cylinder — жиегі қырланған мештер (болса); CubeLow/CylLow — арзан негізгі пішіндер (HISM, сымдар)
 enum class EKAPShape : uint8 { Cube, Cylinder, Sphere, Cone, Rock, Bush, Wolf, WormSeg, Plane, CubeLow, CylLow };
@@ -51,4 +53,7 @@ namespace KAPVis
 	KAPSIMULATOR_API float GroundZ(const UWorld* World, float X, float Y, float Fallback = 0.f);
 	/** Дайын мешті қосу (масштаб — тікелей көбейткіш), материал FKAPMat бойынша */
 	KAPSIMULATOR_API UStaticMeshComponent* AddMesh(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, FVector Pos, FVector Scale, const FKAPMat& M, FRotator Rot = FRotator::ZeroRotator, bool bCollision = false);
+	/** Кирилл әріптері бар белгі қаріпі (F_KAP_Sign) — TextRender-ге орнату */
+	KAPSIMULATOR_API UFont* SignFont();
+	KAPSIMULATOR_API void SignText(UTextRenderComponent* T);
 }

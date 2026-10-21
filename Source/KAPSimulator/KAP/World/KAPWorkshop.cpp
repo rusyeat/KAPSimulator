@@ -126,7 +126,7 @@ void AKAPStructure::BuildWorkshop(FRandomStream& R, bool bBig)
 		}
 		UTextRenderComponent* Tx = NewObject<UTextRenderComponent>(this);
 		Tx->SetupAttachment(RootComponent); Tx->SetRelativeLocation(C + FVector(0, -48, 235)); Tx->SetRelativeRotation(FRotator(0, 90, 0));
-		Tx->SetText(FText::FromString(TEXT("БАСҚАРУ ПУЛЬТІ · ҰҢҒЫМА ҚЫСЫМЫ"))); Tx->SetHorizontalAlignment(EHTA_Center); Tx->SetWorldSize(14); Tx->SetTextRenderColor(FColor(30, 30, 28)); Tx->RegisterComponent();
+		KAPVis::SignText(Tx); Tx->SetText(FText::FromString(TEXT("БАСҚАРУ ПУЛЬТІ · ҰҢҒЫМА ҚЫСЫМЫ"))); Tx->SetHorizontalAlignment(EHTA_Center); Tx->SetWorldSize(14); Tx->SetTextRenderColor(FColor(30, 30, 28)); Tx->RegisterComponent();
 	}
 	// көпірше (бүйір қабырға бойымен, 3 м биіктікте) + баспалдақ
 	{

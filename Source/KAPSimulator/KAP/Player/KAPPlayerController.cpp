@@ -55,7 +55,7 @@ void AKAPPlayerController::SetupInputComponent()
 	const TArray<FK> Keys = {
 		{ "Aim", EKeys::RightMouseButton }, { "Jump", EKeys::SpaceBar }, { "Sprint", EKeys::LeftShift }, { "Interact", EKeys::E }, { "Tablet", EKeys::Tab },
 		{ "Pause", EKeys::Escape }, { "Reload", EKeys::R }, { "Flash", EKeys::F }, { "Med", EKeys::H }, { "Drink", EKeys::J }, { "Eat", EKeys::K },
-		{ "Cam", EKeys::V }, { "Time", EKeys::F9 }, { "Enter", EKeys::Enter },
+		{ "Cam", EKeys::V }, { "Time", EKeys::F9 }, { "Enter", EKeys::Enter }, { "Status", EKeys::Q },
 		{ "S1", EKeys::One }, { "S2", EKeys::Two }, { "S3", EKeys::Three }, { "S4", EKeys::Four }, { "S5", EKeys::Five }, { "S6", EKeys::Six }, { "S7", EKeys::Seven }, { "S8", EKeys::Eight }, { "S9", EKeys::Nine } };
 	UEnhancedInputComponent* EI = Cast<UEnhancedInputComponent>(InputComponent);
 	if (!EI) return;

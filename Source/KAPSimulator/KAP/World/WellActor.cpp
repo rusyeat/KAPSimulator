@@ -83,7 +83,7 @@ void AWellActor::Build(int32 InIndex, const FKAPWellRow& Row)
 		Add(this, Root, EKAPShape::Cube, FVector(420, 486, 150), FVector(90, 3, 64), SignM, FRotator::ZeroRotator, false);
 		UTextRenderComponent* T = NewObject<UTextRenderComponent>(this);
 		T->SetupAttachment(Root); T->SetRelativeLocation(FVector(420, 489, 150)); T->SetRelativeRotation(FRotator(0, 90, 0));
-		T->SetText(FText::FromString(TEXT("РАДИАЦИЯ!\nҚАУІПТІ АЙМАҚ"))); T->SetHorizontalAlignment(EHTA_Center); T->SetVerticalAlignment(EVRTA_TextCenter);
+		KAPVis::SignText(T); T->SetText(FText::FromString(TEXT("РАДИАЦИЯ!\nҚАУІПТІ АЙМАҚ"))); T->SetHorizontalAlignment(EHTA_Center); T->SetVerticalAlignment(EVRTA_TextCenter);
 		T->SetWorldSize(11); T->SetTextRenderColor(FColor(15, 12, 8)); T->RegisterComponent();
 	}
 	// «әлемдік әңгіме»: тасталған қорғаныш костюмі мен газтұтқыш, өлген құстар (мутацияның алғашқы белгісі)

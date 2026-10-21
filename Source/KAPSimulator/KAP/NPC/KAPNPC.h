@@ -10,7 +10,7 @@
 #include "KAPNPC.generated.h"
 
 UENUM()
-enum class ENPCKind : uint8 { Worker, Villager, Elder, Militia, Guard, Bandit, Survivor, Irradiated, Wolf, Worm, Mother };
+enum class ENPCKind : uint8 { Worker, Villager, Elder, Militia, Guard, Bandit, Survivor, Irradiated, Wolf, Worm, Mother, Police, Soldier, Trader };
 /** NPC тапсырмасы (KAPNPCTasks.cpp) */
 enum class ENPCTask : uint8 { None, Repair, Carry, Patrol, Campfire, Flee };
 
@@ -83,6 +83,12 @@ public:
 	static void TrainPolicies();
 	static double TrainMs;
 	bool IsFemale() const { return bFemale; }
+	/** Келісімшарт нысанасы (өлгенде есепке алынады) */
+	int32 ContractUid = 0;
+	/** Әскери аймаққа рұқсатсыз кіргенде ескерту (0 — бірінші, 1 — соңғы, 2 — атыс) */
+	void ArmyWarn(int32 Stage);
+	/** Тегіс дене мен бөлшектер (KAPNPCLook.cpp); мештер жоқ болса false */
+	bool SetupSmoothHuman(ENPCKind InKind, float Scale);
 private:
 	void CivilAI(float Dt);
 	void CombatAI(float Dt);

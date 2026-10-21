@@ -54,6 +54,26 @@ struct FKAPBrigadeState
 	UPROPERTY(SaveGame) float Work = 0.f;
 };
 
+/** Келісімшарт (бүйір жұмыс): полиция, дүкен, әскер тақталары */
+USTRUCT(BlueprintType)
+struct FKAPContract
+{
+	GENERATED_BODY()
+	UPROPERTY(SaveGame) FName Board;            // police, trader, army
+	UPROPERTY(SaveGame) FName Type;             // bounty, patrol, recover, deliver, scrap, nest, fuel, recon
+	UPROPERTY(SaveGame) FString Title;
+	UPROPERTY(SaveGame) FString Desc;
+	UPROPERTY(SaveGame) FString TargetName;
+	UPROPERTY(SaveGame) TArray<FVector2D> Points; // мақсат нүктелері (м)
+	UPROPERTY(SaveGame) int32 Need = 1;
+	UPROPERTY(SaveGame) int32 Have = 0;
+	UPROPERTY(SaveGame) int32 Reward = 0;
+	/** 0 — ұсыныс, 1 — белсенді, 2 — орындалды, 3 — бас тартылды */
+	UPROPERTY(SaveGame) int32 State = 0;
+	UPROPERTY(SaveGame) int32 Uid = 0;
+	UPROPERTY(SaveGame) int32 Day = 0;
+};
+
 /** Ойын сессиясы — бәрі сақталады */
 USTRUCT(BlueprintType)
 struct FKAPSession
@@ -97,6 +117,12 @@ struct FKAPSession
 	UPROPERTY(SaveGame) FName Equipped = "wrench";
 	UPROPERTY(SaveGame) bool bRuSubtitles = false;
 	UPROPERTY(SaveGame) float MouseSens = 1.f;
+	// экономика: ақша (теңге) және келісімшарттар (KAPEconomy.cpp)
+	UPROPERTY(SaveGame) int32 Money = 1000;
+	UPROPERTY(SaveGame) TArray<FKAPContract> Contracts;
+	UPROPERTY(SaveGame) int32 ContractDay = -1;
+	UPROPERTY(SaveGame) int32 NextUid = 1;
+	UPROPERTY(SaveGame) int32 Tracked = 0;
 };
 
 UCLASS()

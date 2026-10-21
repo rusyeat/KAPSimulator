@@ -67,6 +67,8 @@ AKAPHUD* AKAPHUD::Get(const UObject* Ctx)
 // ---------------- көмекшілер (виртуал 1920×1080) ----------------
 void AKAPHUD::Rect(float X, float Y, float W, float H, FLinearColor C)
 {
+	C.A *= UiA;
+	if (C.A <= 0.003f) return;
 	FCanvasTileItem T(FVector2D(X * Sc, Y * Sc), FVector2D(W * Sc, H * Sc), C);
 	T.BlendMode = SE_BLEND_Translucent;
 	Canvas->DrawItem(T);
@@ -77,6 +79,8 @@ void AKAPHUD::Frame(float X, float Y, float W, float H, FLinearColor C, float T)
 }
 void AKAPHUD::Line(FVector2D A, FVector2D B, FLinearColor C, float T)
 {
+	C.A *= UiA;
+	if (C.A <= 0.003f) return;
 	FCanvasLineItem L(A * Sc, B * Sc);
 	L.SetColor(C); L.LineThickness = T * Sc;
 	Canvas->DrawItem(L);
@@ -91,6 +95,8 @@ void AKAPHUD::Circle(FVector2D C, float R, FLinearColor Col, float T, int32 Seg)
 }
 void AKAPHUD::Disc(FVector2D C, float R, FLinearColor Col)
 {
+	Col.A *= UiA;
+	if (Col.A <= 0.003f) return;
 	TArray<FCanvasUVTri> Tris;
 	const int32 Seg = 16;
 	for (int32 i = 0; i < Seg; i++)
@@ -114,9 +120,11 @@ float AKAPHUD::Txt(float X, float Y, const FString& S, float Size, FLinearColor 
 {
 	const FSlateFontInfo F = KFont(Size * Sc);
 	const FVector2D M = Measure(S, Size);
+	C.A *= UiA;
+	if (C.A <= 0.003f) return M.X;
 	const float Ox = Align == 1 ? -M.X / 2 : Align == 2 ? -M.X : 0;
 	FCanvasTextItem T(FVector2D((X + Ox) * Sc, Y * Sc), FText::FromString(S), F, C);
-	if (bShadow) { T.EnableShadow(FLinearColor(0, 0, 0, 0.8f), FVector2D(1, 1)); }
+	if (bShadow) { T.EnableShadow(FLinearColor(0, 0, 0, 0.8f * UiA), FVector2D(1, 1)); }
 	Canvas->DrawItem(T);
 	return M.X;
 }
@@ -153,11 +161,11 @@ void AKAPHUD::AddToast(const FString& Msg, FName Kind) { Toasts.Insert({ Msg, Ki
 void AKAPHUD::SetSubtitle(const FString& Kk, const FString& Ru, const FString& Who, float Dur) { SubKk = Kk; SubRu = Ru; SubWho = Who; SubT = Dur; }
 void AKAPHUD::ShowDialog(const FString& Name, const FString& Text, TArray<FKAPDialogOption> Opts) { bDialog = true; DName = Name; DText = Text; DOpts = MoveTemp(Opts); }
 void AKAPHUD::ToggleTablet() { bTablet = !bTablet; TabletScroll = 0; }
-void AKAPHUD::CloseAll() { bTablet = false; bDialog = false; if (MG.bActive) MGFinish(false); }
+void AKAPHUD::CloseAll() { bTablet = false; bDialog = false; bShop = false; bJobs = false; if (MG.bActive) MGFinish(false); }
 bool AKAPHUD::IsModal() const
 {
 	const AKAPGameMode* GM = AKAPGameMode::Get(this);
-	return bTablet || bDialog || MG.bActive || (GM && (GM->bInMenu || GM->bPaused || GM->bPlayerDead || GM->bCredits));
+	return bTablet || bDialog || bShop || bJobs || MG.bActive || (GM && (GM->bInMenu || GM->bPaused || GM->bPlayerDead || GM->bCredits));
 }
 
 void AKAPHUD::Click(FVector2D Pos, bool bDown)
@@ -173,10 +181,12 @@ bool AKAPHUD::HandleKey(FName K, bool bDown)
 	AKAPGameMode* GM = AKAPGameMode::Get(this);
 	if (!GM) return false;
 	if (K == "Jump") bSpaceDown = bDown;
+	if (K == "Status") { bStatusHeld = bDown; return false; }
 	if (!bDown) return MG.bActive;
 	if (GM->bCredits) { if (K == "Pause" || K == "Enter") UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this))); return true; }
 	if (GM->bInMenu) { if (K == "Enter") GM->MenuNewGame(); return true; }
 	if (MG.bActive) { if (K == "Pause") MGFinish(false); return true; }
+	if (bShop || bJobs) { if (K == "Pause" || K == "Tablet") { bShop = false; bJobs = false; } return true; }
 	if (bDialog)
 	{
 		if (K == "Pause") { bDialog = false; return true; }
@@ -203,6 +213,7 @@ void AKAPHUD::DrawHUD()
 	LastTime = Now;
 	Sc = Canvas->ClipY / 1080.f;
 	Btns.Reset();
+	UiA = 1.f;
 	float Mx, My;
 	if (GetOwningPlayerController() && GetOwningPlayerController()->GetMousePosition(Mx, My)) Mouse = FVector2D(Mx, My) / Sc;
 	AKAPGameMode* GM = AKAPGameMode::Get(this);
@@ -224,6 +235,8 @@ void AKAPHUD::DrawHUD()
 		DrawSubtitle(Dt);
 		if (bTablet) DrawTablet();
 		if (bDialog) DrawDialog();
+		if (bShop) DrawShop();
+		if (bJobs) DrawJobs();
 		if (MG.bActive) DrawMinigame(Dt);
 		if (GM->bPaused) DrawPause();
 		if (GM->bPlayerDead) DrawDeath();
@@ -274,6 +287,33 @@ void AKAPHUD::DrawGameplay(float Dt)
 	if (!P || !WX) return;
 	const float VW = Canvas->ClipX / Sc;
 	const FKAPEnv& E = WX->Env;
+	// ---- қай панель қашан көрінеді: оқиғадан кейін бірнеше секунд, қауіпті мәнде тұрақты, Q ұстағанда бәрі ----
+	GameT += Dt;
+	const bool bAll = bStatusHeld;
+	{
+		const FString Obj = GM->ObjectiveText();
+		if (Obj != LastObj) { LastObj = Obj; ObjT = 8.f; }
+		if ((int32)E.Cur != LastWeather || E.bNight != bLastNight) { if (LastWeather >= 0) ClockT = 6.f; LastWeather = (int32)E.Cur; bLastNight = E.bNight; }
+		if (GM->TimeScale > 1) ClockT = FMath::Max(ClockT, 0.5f);
+		const bool bStorm = E.Storm > 0.5f;
+		if (bStorm != bLastStorm || P->bIndoor != bLastIndoor) { BarsT = FMath::Max(BarsT, 4.f); bLastStorm = bStorm; bLastIndoor = P->bIndoor; }
+		if (LastHp >= 0.f && P->GetHp() < LastHp - 0.5f) BarsT = 5.f;
+		LastHp = P->GetHp();
+		if (S.Equipped != LastEquip || S.Weapons.Num() != LastWeapons) { if (LastWeapons >= 0) { HotT = 2.5f; AmmoT = 3.f; } LastEquip = S.Equipped; LastWeapons = S.Weapons.Num(); }
+		const int32 Mg = S.Mag.FindRef(S.Equipped);
+		if (Mg != LastMag) { if (LastMag >= 0) AmmoT = 3.f; LastMag = Mg; }
+		if (GM->CurrentVehicle.Get() != LastVeh.Get()) { LastVeh = GM->CurrentVehicle.Get(); if (LastVeh.IsValid()) VehT = 7.f; }
+		ObjT -= Dt; ClockT -= Dt; BarsT -= Dt; HotT -= Dt; AmmoT -= Dt; VehT -= Dt;
+	}
+	const bool bDoseOn = S.Inv.FindRef("dosimeter") > 0 && P->DoseRate > 0.05f;
+	const bool bBarsNeed = P->GetHp() < 50.f || P->GetWater() < 35.f || P->GetStamina() < 97.f || P->GetTemp() > 38.5f || P->GetTemp() < 35.2f || bDoseOn;
+	FadeTo(AObj, bAll || ObjT > 0.f, Dt);
+	FadeTo(AClock, bAll || ClockT > 0.f, Dt);
+	FadeTo(ACompass, bAll || (P->Navigator && P->Navigator->bHasTarget), Dt);
+	FadeTo(ABars, bAll || BarsT > 0.f || bBarsNeed, Dt);
+	FadeTo(AHot, bAll || HotT > 0.f, Dt);
+	FadeTo(AAmmo, bAll || AmmoT > 0.f || P->ReloadT > 0.f, Dt);
+	FadeTo(AMap, bAll, Dt);
 	// экран эффектілері
 	if (P->HurtFlash > 0 || P->GetHp() < 25)
 	{
@@ -284,17 +324,27 @@ void AKAPHUD::DrawGameplay(float Dt)
 	if (P->GetWater() < 25) Rect(0, 0, VW, 1080, FLinearColor(0.5f, 0.45f, 0.35f, (25 - P->GetWater()) / 100.f));
 	if (P->GetTemp() > 38.8f) Rect(0, 0, VW, 1080, FLinearColor(1, 0.6f, 0.3f, FMath::Min(0.25f, (P->GetTemp() - 38.8f) * 0.15f)));
 	if (P->GetTemp() < 35.f) Rect(0, 0, VW, 1080, FLinearColor(0.5f, 0.6f, 1.f, 0.12f));
-	// тапсырма
-	Rect(20, 20, 470, 62, Panel); Rect(20, 20, 4, 62, Amber);
-	Txt(34, 26, TEXT("ТАПСЫРМА"), 12, Amber);
-	Txt(34, 46, GM->ObjectiveText(), 17, Txtc);
-	// сағат
-	const FString Clock = KAP::FmtTime(S.Time) + FString::Printf(TEXT(" · %d-күн"), FMath::FloorToInt32(S.Time / 24) + 1);
-	Rect(VW - 300, 20, 280, 82, Panel); Rect(VW - 24, 20, 4, 82, Amber);
-	Txt(VW - 34, 26, Clock, 18, Txtc, 2);
-	Txt(VW - 34, 52, KAP::WeatherName(E.Cur).ToString() + (E.bNight ? TEXT(" · түн") : TEXT("")) + (GM->TimeScale > 1 ? FString::Printf(TEXT(" · ×%d"), (int32)GM->TimeScale) : TEXT("")), 13, Muted, 2);
-	Txt(VW - 34, 72, FString::Printf(TEXT("Ауа %d°C · көріну %d м"), FMath::RoundToInt32(E.Temp), FMath::RoundToInt32(E.Visibility)), 13, Muted, 2);
-	// компас
+	// тапсырма (жаңа тапсырмада 8 с)
+	UiA = AObj;
+	if (UiA > 0.01f)
+	{
+		Rect(20, 20, 470, 62, Panel); Rect(20, 20, 4, 62, Amber);
+		Txt(34, 26, TEXT("ТАПСЫРМА"), 12, Amber);
+		Txt(34, 46, LastObj, 17, Txtc);
+	}
+	// сағат пен ауа райы (ауа райы не тәулік ауысқанда)
+	UiA = AClock;
+	if (UiA > 0.01f)
+	{
+		const FString Clock = KAP::FmtTime(S.Time) + FString::Printf(TEXT(" · %d-күн"), FMath::FloorToInt32(S.Time / 24) + 1);
+		Rect(VW - 300, 20, 280, 82, Panel); Rect(VW - 24, 20, 4, 82, Amber);
+		Txt(VW - 34, 26, Clock, 18, Txtc, 2);
+		Txt(VW - 34, 52, KAP::WeatherName(E.Cur).ToString() + (E.bNight ? TEXT(" · түн") : TEXT("")) + (GM->TimeScale > 1 ? FString::Printf(TEXT(" · ×%d"), (int32)GM->TimeScale) : TEXT("")), 13, Muted, 2);
+		Txt(VW - 34, 72, FString::Printf(TEXT("Ауа %d°C · көріну %d м"), FMath::RoundToInt32(E.Temp), FMath::RoundToInt32(E.Visibility)), 13, Muted, 2);
+	}
+	// компас (тек навигатор маршруты бар кезде)
+	UiA = ACompass * 0.85f;
+	if (UiA > 0.01f)
 	{
 		const float Cx = VW / 2, W = 520;
 		Rect(Cx - W / 2, 18, W, 34, Panel);
@@ -319,7 +369,9 @@ void AKAPHUD::DrawGameplay(float Dt)
 			Txt(Cx + W / 2 - 8, 25, FString::Printf(TEXT("%d м"), FMath::RoundToInt32(FVector2D::Distance(Pm, P->Navigator->Target))), 13, FLinearColor(0.3f, 0.88f, 0.54f), 2, false);
 		}
 	}
-	// көрсеткіштер
+	// көрсеткіштер (жарақат, шөл, шаршау, ыстық/суық, сәуле кезінде)
+	UiA = ABars;
+	if (UiA > 0.01f)
 	{
 		const float X = 20, Y = 900, W = 300;
 		Rect(X, Y, W, 160, Panel);
@@ -340,11 +392,12 @@ void AKAPHUD::DrawGameplay(float Dt)
 		Txt(X + 196, Y + 90, bDos ? FString::Printf(TEXT("%d мЗв%s"), FMath::RoundToInt32(P->GetDose()), P->DoseRate > 0.05f ? TEXT(" ^") : TEXT("")) : TEXT("? (дозиметр)"), 15, P->DoseRate > 0.05f ? FLinearColor(0.7f, 1.f, 0.23f) : Txtc);
 		Txt(X + 12, Y + 120, P->bIndoor ? TEXT("Баспанада") : WX->Env.Storm > 0.5f ? TEXT("! Құм дауылы") : TEXT(""), 13, Amber);
 	}
-	// қолдағы құрал/қару
+	// қолдағы құрал/қару (ауыстырғанда 2.5 с), оқ саны (атқанда/оқтағанда)
 	{
 		const float N = S.Weapons.Num(), W = 76, X0 = VW / 2 - N * (W + 4) / 2, Y = 1010;
 		UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
-		for (int32 i = 0; i < S.Weapons.Num(); i++)
+		UiA = AHot;
+		for (int32 i = 0; UiA > 0.01f && i < S.Weapons.Num(); i++)
 		{
 			const bool bSel = S.Weapons[i] == S.Equipped;
 			const FKAPWeaponRow* Wr = D->Weapon(S.Weapons[i]);
@@ -355,13 +408,20 @@ void AKAPHUD::DrawGameplay(float Dt)
 			if (Wr && Wr->Permit && !S.bPermitWeapon) Txt(X0 + i * (W + 4) + W - 6, Y + 38, TEXT("x"), 11, CRed, 2);
 		}
 		const FKAPWeaponRow* W2 = D->Weapon(S.Equipped);
+		UiA = AAmmo;
 		if (W2 && W2->Kind == "gun") Txt(VW - 280, 1020, FString::Printf(TEXT("%d / %d"), S.Mag.FindRef(S.Equipped), S.Ammo.FindRef(W2->Ammo)), 26, FLinearColor::White, 2);
 		else if (W2 && W2->Kind == "throw") Txt(VW - 280, 1020, FString::Printf(TEXT("× %d"), S.Ammo.FindRef(W2->Ammo)), 26, FLinearColor::White, 2);
+		UiA = 1.f;
 		if (P->ReloadT > 0) Txt(VW / 2, 600, TEXT("Оқталуда..."), 16, Amber, 1);
 	}
-	// нысана
+	UiA = 1.f;
+	// нысана: кішкентай нүкте (қару қолда болса — сәл анығырақ)
 	if (P->bScoped) { Circle(FVector2D(VW / 2, 540), 300, FLinearColor::Black, 6, 48); Line(FVector2D(VW / 2 - 300, 540), FVector2D(VW / 2 + 300, 540), FLinearColor::Black, 1); Line(FVector2D(VW / 2, 240), FVector2D(VW / 2, 840), FLinearColor::Black, 1); }
-	else if (!GM->CurrentVehicle.IsValid()) Txt(VW / 2, 527, TEXT("+"), 22, FLinearColor(1, 1, 1, 0.75f), 1);
+	else if (!GM->CurrentVehicle.IsValid())
+	{
+		const FKAPWeaponRow* Wc = UKAPDataSubsystem::Get(this)->Weapon(S.Equipped);
+		Disc(FVector2D(VW / 2, 540), 2.2f, FLinearColor(1, 1, 1, Wc && Wc->Kind == "gun" ? 0.7f : 0.4f));
+	}
 	// әрекет мәтіні
 	if (!P->InteractText.IsEmpty() && !GM->CurrentVehicle.IsValid())
 	{
@@ -373,6 +433,12 @@ void AKAPHUD::DrawGameplay(float Dt)
 	// көлік
 	if (AKAPVehicleHandle* V = GM->CurrentVehicle.Get())
 	{
+		// отырғанда 7 с, кейін тек ақауда (жанармай аз, двигатель тоқтады, дөңгелек жарылды)
+		FadeTo(AVeh, bAll || VehT > 0.f || V->Fuel < 5 || V->State == "broken" || V->Flats > 0, Dt);
+		UiA = AVeh;
+	}
+	if (AKAPVehicleHandle* V = GM->CurrentVehicle.Get(); V && UiA > 0.01f)
+	{
 		Rect(VW - 520, 860, 260, 130, Panel);
 		Txt(VW - 508, 868, V->Def.Title, 16, Amber);
 		Txt(VW - 508, 892, FString::Printf(TEXT("Жылдамдық: %d км/сағ"), FMath::RoundToInt32(V->SpeedKmh())), 14, Txtc);
@@ -380,9 +446,14 @@ void AKAPHUD::DrawGameplay(float Dt)
 		Txt(VW - 508, 932, FString::Printf(TEXT("Двигатель: %d%%"), FMath::RoundToInt32(V->Hp)), 14, Txtc);
 		if (V->Flats) Txt(VW - 508, 952, FString::Printf(TEXT("Жарылған дөңгелек: %d"), V->Flats), 14, COrange);
 		if (V->State == "broken") Txt(VW - 508, 968, TEXT("ДВИГАТЕЛЬ ТОҚТАДЫ"), 14, CRed);
-		Txt(VW / 2, 1040, TEXT("W/S — газ/тежеу · A/D — руль · Space — қол тежегіш · V — камера · E — түсу"), 13, Muted, 1);
+		if (VehT > 0.f || bAll) Txt(VW / 2, 1040, TEXT("W/S — газ/тежеу · A/D — руль · Space — қол тежегіш · V — камера · E — түсу"), 13, Muted, 1);
 	}
-	DrawMinimap(VW - 130, 960, 110);
+	// миникарта — тек Q ұстағанда (картаның өзі планшетте)
+	UiA = AMap;
+	if (UiA > 0.01f) DrawMinimap(VW - 130, 960, 110);
+	UiA = 1.f;
+	DrawMoney(Dt);
+	UiA = 1.f;
 }
 
 void AKAPHUD::DrawMinimap(float Cx, float Cy, float R)
@@ -445,27 +516,6 @@ void AKAPHUD::DrawMinimap(float Cx, float Cy, float R)
 }
 
 // ---------------- мәзірлер ----------------
-void AKAPHUD::DrawMenu()
-{
-	AKAPGameMode* GM = AKAPGameMode::Get(this);
-	UKAPGameInstance* GI = UKAPGameInstance::Get(this);
-	const float VW = Canvas->ClipX / Sc, Cx = VW / 2;
-	Rect(0, 0, VW, 1080, FLinearColor(0.03f, 0.02f, 0.01f, 0.45f));
-	Txt(Cx, 220, TEXT("KAP Simulator"), 72, FLinearColor(0.96f, 0.9f, 0.77f), 1);
-	Txt(Cx, 320, TEXT("Survival · ISR уран кеніші · 21 ұңғыма"), 20, Muted, 1);
-	Button(Cx - 160, 400, 320, 52, TEXT("Жаңа ойын"), [GM]() { GM->MenuNewGame(); }, true, true, 19);
-	Button(Cx - 160, 464, 320, 52, TEXT("Жалғастыру"), [GM]() { GM->MenuContinue(); }, GI && GI->HasSave(), false, 19);
-	Button(Cx - 160, 528, 320, 52, TEXT("Басқару"), [this]() { bHelp = !bHelp; }, true, false, 19);
-	Button(Cx - 160, 592, 320, 52, GI && GI->S.bRuSubtitles ? TEXT("Орысша субтитр: ҚОСУЛЫ") : TEXT("Орысша субтитр: өшірулі"), [GI]() { GI->S.bRuSubtitles = !GI->S.bRuSubtitles; }, true, false, 17);
-	Button(Cx - 160, 656, 320, 52, TEXT("Шығу"), [this]() { UKismetSystemLibrary::QuitGame(this, GetOwningPlayerController(), EQuitPreference::Quit, false); }, true, false, 19);
-	if (bHelp)
-	{
-		Rect(Cx + 200, 400, 560, 330, Panel);
-		Para(Cx + 220, 414, 520, TEXT("WASD — жүру · Shift — жүгіру · Space — секіру\nТышқан — қарау · СТБ — ату/соғу · ОТБ — снайпер нысанасы\nE — әрекет (есік, пульт, көлік, адам)\nTab — планшет · 1–9, дөңгелек — құрал/қару · R — оқтау\nF — фонарь · H — аптечка/бинт · J — су ішу · K — тамақ\nКөлікте: W/S, A/D, Space — қол тежегіш, V — камера, E — түсу\nEsc — үзіліс · F9 — уақыт ×1/×4/×12 · Enter — кинематиканы өткізу"), 15, Txtc);
-	}
-	Para(Cx - 400, 960, 800, TEXT("Оқиғалар мен кейіпкерлер ойдан шығарылған. «QazUran» — ойдан шығарылған компания. Мутациялар мен монстрлар — көркем ойдан шығару; нақты ISR өндірісінде мұндай нәрсе жоқ."), 12, Muted);
-	Txt(Cx, 1040, FString::Printf(TEXT("Q-кесте үйретілді: %d мс · Unreal Engine 5"), FMath::RoundToInt32(AKAPNPC::TrainMs)), 12, Amber, 1);
-}
 void AKAPHUD::DrawPause()
 {
 	AKAPGameMode* GM = AKAPGameMode::Get(this);
@@ -536,11 +586,11 @@ void AKAPHUD::DrawTablet()
 	Txt(X + 16, Y + 9, TEXT("QazUran · Кен планшеті"), 17, Amber);
 	Txt(X + 300, Y + 11, KAP::FmtTime(S.Time) + FString::Printf(TEXT(" · %d-күн · "), FMath::FloorToInt32(S.Time / 24) + 1) + KAP::WeatherName(GM->Weather->Env.Cur).ToString(), 14, Txtc);
 	Txt(X + W - 16, Y + 12, TEXT("Tab — жабу"), 13, Muted, 2);
-	static const TCHAR* Tabs[10] = { TEXT("Ұңғымалар"), TEXT("Жұмысшылар"), TEXT("Карта · навигатор"), TEXT("Тапсырмалар"), TEXT("Ауа райы"), TEXT("Рұқсаттар"), TEXT("Инвентарь"), TEXT("Бригадалар (CSP)"), TEXT("AI мониторы"), TEXT("Жүйе") };
+	static const TCHAR* Tabs[11] = { TEXT("Ұңғымалар"), TEXT("Жұмысшылар"), TEXT("Карта"), TEXT("Тапсырмалар"), TEXT("Жұмыстар ₸"), TEXT("Ауа райы"), TEXT("Рұқсаттар"), TEXT("Инвентарь"), TEXT("Бригадалар"), TEXT("AI мониторы"), TEXT("Жүйе") };
 	float Tx = X + 8;
-	for (int32 i = 0; i < 10; i++)
+	for (int32 i = 0; i < 11; i++)
 	{
-		const FString L = Tabs[i] + FString((i == 7 && !S.bBrigadesUnlocked) ? TEXT(" (жабық)") : TEXT(""));
+		const FString L = Tabs[i] + FString((i == 8 && !S.bBrigadesUnlocked) ? TEXT(" (жабық)") : TEXT(""));
 		const float Tw = Measure(L, 14).X + 26;
 		Button(Tx, Y + 46, Tw, 32, L, [this, i]() { Tab = i; TabletScroll = 0; }, true, Tab == i, 14);
 		Tx += Tw + 4;
@@ -552,11 +602,12 @@ void AKAPHUD::DrawTablet()
 	case 1: TabWorkers(CX, CY, CW, CH); break;
 	case 2: TabMap(CX, CY, CW, CH); break;
 	case 3: TabQuests(CX, CY, CW, CH); break;
-	case 4: TabWeather(CX, CY, CW, CH); break;
-	case 5: TabPermits(CX, CY, CW, CH); break;
-	case 6: TabInv(CX, CY, CW, CH); break;
-	case 7: TabBrig(CX, CY, CW, CH); break;
-	case 8: TabAI(CX, CY, CW, CH); break;
+	case 4: TabJobs(CX, CY, CW, CH); break;
+	case 5: TabWeather(CX, CY, CW, CH); break;
+	case 6: TabPermits(CX, CY, CW, CH); break;
+	case 7: TabInv(CX, CY, CW, CH); break;
+	case 8: TabBrig(CX, CY, CW, CH); break;
+	case 9: TabAI(CX, CY, CW, CH); break;
 	default: TabSys(CX, CY, CW, CH); break;
 	}
 }
@@ -741,9 +792,10 @@ void AKAPHUD::TabMap(float X, float Y, float W, float H)
 	{
 		if (L.Type == "nest") return;
 		const FVector2D Pp = To(FVector2D(L.X, L.Y));
-		const FLinearColor C = L.Type == "village" ? Amber : L.Type == "ruins" ? CRed : L.Type == "hq" ? CBlue : L.Type == "bandit" ? CRed : Txtc;
+		const FLinearColor C = L.Type == "village" ? Amber : L.Type == "ruins" ? CRed : L.Type == "hq" ? CBlue : L.Type == "bandit" ? CRed : L.Type == "police" ? CBlue : L.Type == "shop" ? CGreen : L.Type == "army" ? COrange : Txtc;
 		Rect(Pp.X - 3, Pp.Y - 3, 6, 6, C);
-		if (L.Type == "village" || L.Type == "hq" || L.Type == "ruins" || L.Type == "bandit" || L.Type == "reservoir") Txt(Pp.X + 6, Pp.Y - 8, L.Title, 11, C);
+		if (L.Type == "village" || L.Type == "hq" || L.Type == "ruins" || L.Type == "bandit" || L.Type == "reservoir" || L.Type == "police" || L.Type == "shop" || L.Type == "army") Txt(Pp.X + 6, Pp.Y - 8, L.Title, 11, C);
+		if (L.Type == "army") Frame(Pp.X - 62 * Sm, Pp.Y - 47 * Sm, 124 * Sm, 94 * Sm, COrange, 1.5f);
 		if (L.Type == "tower") Txt(Pp.X + 6, Pp.Y - 8, S.Towers.Contains(Id) ? TEXT("мұнара ✓") : TEXT("мұнара"), 10, Txtc);
 	});
 	for (int32 i = 0; i < WM->Wells.Num(); i++) { const FVector2D Pp = To(WM->Wells[i].PosM()); Disc(Pp, 7, StateCol(S.Wells[i].State)); Txt(Pp.X, Pp.Y - 7, FString::FromInt(i + 1), 9, FLinearColor::Black, 1, false); }
@@ -905,7 +957,7 @@ void AKAPHUD::TabInv(float X, float Y, float W, float H)
 	Txt(X, Y, TEXT("Инвентарь"), 18, Amber);
 	float Yy = Y + 36;
 	static const TSet<FName> Usable = { "medkit", "bandage", "food", "water", "iodine", "antidote" };
-	static const TSet<FName> Wearable = { "suit", "hat", "coat" };
+	static const TSet<FName> Wearable = { "suit", "hat", "coat", "armor" };
 	D->Items->ForeachRow<FKAPItemRow>(TEXT("KAP"), [&](const FName& Id, const FKAPItemRow& R)
 	{
 		const int32 N = S.Inv.FindRef(Id);

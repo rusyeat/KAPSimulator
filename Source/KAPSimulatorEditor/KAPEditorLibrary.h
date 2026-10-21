@@ -25,6 +25,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateBevelMeshes();
 	/** Көлік корпустары (SDF → тегіс Nanite мештер), шина мен диск */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateVehicleMeshes();
+	/** Кейіпкерлер: киінген тегіс денелер (SKM_KAP_Body*), M_KAP_Human2, каска/дулыға/респиратор/рюкзак/қалпақ */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateHumanAssets();
+	/** TextRender белгілері үшін кирилл қаріпі (F_KAP_Sign) */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateSignFont();
 	/** Шөлейт v2: құм толқындары, ойпаңдар */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateLandscapeMaterial2();
 	/** Шынайы құм v4: аралас асимметриялы толқындар, түйіршік, жылтыр */

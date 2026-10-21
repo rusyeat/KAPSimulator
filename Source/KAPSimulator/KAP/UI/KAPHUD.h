@@ -24,6 +24,12 @@ public:
 	void StartMinigame(const FString& Title, const TArray<FString>& Steps, TFunction<void(bool)> OnDone);
 	void ToggleTablet();
 	void CloseAll();
+	/** Дүкен (trader / army) және жұмыс тақтасы (police / trader / army) — KAPHUDShop.cpp */
+	void ShowShop(FName Kind) { bShop = true; ShopKind = Kind; ShopCat = 0; bJobs = false; }
+	void ShowJobs(FName Board) { bJobs = true; JobsBoard = Board; bShop = false; }
+	/** Тест/кеңес үшін: планшетті белгілі бетпен ашу, мәзір параметрлерін көрсету */
+	void OpenTab(int32 T) { bTablet = true; Tab = T; }
+	void MenuSettings(bool b) { bSettings = b; }
 	bool IsModal() const;
 	void Click(FVector2D Pos, bool bDown);
 	bool HandleKey(FName K, bool bDown);
@@ -68,6 +74,18 @@ private:
 	void TabAI(float X, float Y, float W, float H);
 	void TabSys(float X, float Y, float W, float H);
 	void DrawMinigame(float Dt);
+	void DrawShop();
+	void DrawJobs();
+	void TabJobs(float X, float Y, float W, float H);
+	void DrawMoney(float Dt);
+	void DrawSettings(float X, float Y);
+	bool MenuItem(float X, float Y, const FString& Label, TFunction<void()> Fn, bool bEnabled = true);
+	void Trefoil(FVector2D C, float R, float Ang, FLinearColor Col);
+	static FString Money(int32 V);
+	bool bShop = false, bJobs = false, bSettings = false;
+	FName ShopKind, JobsBoard;
+	int32 ShopCat = 0, LastMoney = -1, MoneyDelta = 0;
+	float MoneyT = 0.f;
 	UTexture2D* MapTexture();
 
 	// ---- күй ----
@@ -91,4 +109,13 @@ private:
 	void MGFinish(bool bOk);
 	FBox2D MGArea;
 	double LastTime = 0;
+	// ---- аз интерфейс (Nuclear Nightmare сияқты): панельдер тек қажет кезде көрінеді, Q ұстап тұрса — бәрі ----
+	bool bStatusHeld = false;
+	/** Қазіргі панельдің мөлдірлігі — Rect/Txt/Line/Disc түстеріне көбейтіледі */
+	float UiA = 1.f;
+	float AObj = 0, AClock = 0, ACompass = 0, ABars = 0, AHot = 0, AAmmo = 0, AMap = 0, AVeh = 0;
+	float ObjT = 0, ClockT = 0, BarsT = 0, HotT = 0, AmmoT = 0, VehT = 0, GameT = 0;
+	FString LastObj; int32 LastWeather = -1; bool bLastNight = false, bLastIndoor = false, bLastStorm = false;
+	FName LastEquip; int32 LastMag = -1, LastAmmo = -1, LastWeapons = -1; float LastHp = -1.f; TWeakObjectPtr<AActor> LastVeh;
+	static float FadeTo(float& A, bool bWant, float Dt) { A = FMath::FInterpConstantTo(A, bWant ? 1.f : 0.f, Dt, bWant ? 5.f : 1.2f); return A; }
 };

@@ -10,6 +10,7 @@
 #include "KAP/Core/KAPInteractable.h"
 #include "KAP/NPC/KAPNPC.h"
 #include "KAP/World/KAPVisuals.h"
+#include "Engine/StaticMesh.h"
 #include "KAP/World/KAPFXManager.h"
 #include "KAP/World/WeatherManager.h"
 #include "KAP/World/WellManagerSubsystem.h"
@@ -146,13 +147,27 @@ void AKAPCharacter::BuildHeld(FName Id)
 		FKAPMat Sleeve = FKAPMat::Paint(FLinearColor(0.1f, 0.13f, 0.2f), 0.92f); Sleeve.Ribs = 0.35f; Sleeve.RibPeriod = 2.5f; Sleeve.Grime = 0.85f; Sleeve.DustTop = 0.6f;
 		const bool bLong = Id == "ak" || Id == "sniper" || Id == "shotgun";
 		const bool bPistol = Id == "pm" || Id == "flaregun";
+		// тегіс жұдырық пен жең мештері (редактор генераторы); жоқ болса — ескі пішіндер
+		static TWeakObjectPtr<UStaticMesh> FistM, SleeveM;
+		if (!FistM.IsValid()) FistM = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/KAP/Meshes/SM_KAP_Fist_0.SM_KAP_Fist_0"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (!SleeveM.IsValid()) SleeveM = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/KAP/Meshes/SM_KAP_Sleeve.SM_KAP_Sleeve"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		auto FP = [&](UStaticMesh* Ms, FVector P, FVector S, const FKAPMat& M, FRotator R)
+		{
+			UStaticMeshComponent* C = KAPVis::AddMesh(this, HeldRoot, Ms, P, S, M, R, false);
+			C->SetCastShadow(false); C->SetOnlyOwnerSee(true); C->SetCachedMaxDrawDistance(0.f);
+		};
 		auto Arm = [&](FVector Hand, FVector Dir, FRotator HandRot)
 		{
-			B(Hand, FVector(8, 6, 9), Glove, HandRot);                                                   // алақан
-			B(Hand + FVector(2.5f, 0, 3.5f), FVector(3, 6.5f, 3), Glove, HandRot);                         // саусақтар
 			const FVector D = Dir.GetSafeNormal();
+			if (FistM.IsValid()) FP(FistM.Get(), Hand, FVector(1.05f), Glove, HandRot);                // жұдырық (қолғап)
+			else
+			{
+				B(Hand, FVector(8, 6, 9), Glove, HandRot);                                               // алақан
+				B(Hand + FVector(2.5f, 0, 3.5f), FVector(3, 6.5f, 3), Glove, HandRot);                     // саусақтар
+			}
 			Cy(Hand + D * 9.f, FVector(7.5f, 7.5f, 12.f), Glove, FRotationMatrix::MakeFromZ(D).Rotator());   // білек (қолғап жиегі)
-			Cy(Hand + D * 26.f, FVector(10.f, 10.f, 26.f), Sleeve, FRotationMatrix::MakeFromZ(D).Rotator()); // жең
+			if (SleeveM.IsValid()) FP(SleeveM.Get(), Hand + D * 26.f, FVector(0.105f, 0.105f, 0.26f), Sleeve, FRotationMatrix::MakeFromZ(D).Rotator()); // жең
+			else Cy(Hand + D * 26.f, FVector(10.f, 10.f, 26.f), Sleeve, FRotationMatrix::MakeFromZ(D).Rotator());
 		};
 		if (bLong)
 		{
@@ -175,7 +190,15 @@ void AKAPCharacter::BuildHeld(FName Id)
 		if (bLong || bPistol)
 		{
 			const FKAPMat Fl = FKAPMat::Glow(FLinearColor(1.f, 0.62f, 0.22f), 0);
-			for (int32 k = 0; k < 3; k++) { UStaticMeshComponent* F = B(MuzzleLocal + FVector(5, 0, 0), FVector(12, 1, bLong ? 9.f : 6.f), Fl, FRotator(0, 0, k * 60.f)); F->SetVisibility(false); MuzzleFx.Add(F); }
+			static TWeakObjectPtr<UStaticMesh> MuzzleM;
+			if (!MuzzleM.IsValid()) MuzzleM = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/KAP/Meshes/SM_KAP_Muzzle.SM_KAP_Muzzle"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+			if (MuzzleM.IsValid())
+			{
+				// жұлдыз тәрізді жалын (алға созылған жапырақшалар), әр атқанда бұрылады
+				UStaticMeshComponent* F = KAPVis::AddMesh(this, HeldRoot, MuzzleM.Get(), MuzzleLocal + FVector(0.5f, 0, 0), FVector(bLong ? 1.35f : 0.85f), Fl);
+				F->SetCastShadow(false); F->SetOnlyOwnerSee(true); F->SetCachedMaxDrawDistance(0.f); F->SetVisibility(false); MuzzleFx.Add(F);
+			}
+			else for (int32 k = 0; k < 3; k++) { UStaticMeshComponent* F = B(MuzzleLocal + FVector(5, 0, 0), FVector(12, 1, bLong ? 9.f : 6.f), Fl, FRotator(0, 0, k * 60.f)); F->SetVisibility(false); MuzzleFx.Add(F); }
 			MuzzleLight = NewObject<UPointLightComponent>(this);
 			MuzzleLight->SetupAttachment(HeldRoot); MuzzleLight->SetRelativeLocation(MuzzleLocal + FVector(8, 0, 0));
 			MuzzleLight->SetIntensityUnits(ELightUnits::Candelas); MuzzleLight->SetIntensity(0.f);
@@ -446,6 +469,8 @@ void AKAPCharacter::UseItem(FName Id)
 
 float AKAPCharacter::TakeDamage(float Damage, FDamageEvent const& Event, AController* Inst, AActor* Causer)
 {
+	// бронежилет киюлі болса — оқ пен соққы 35%-ға әлсірейді
+	if (const UKAPGameInstance* GI = UKAPGameInstance::Get(this)) if (GI->S.Wear.Contains("armor")) Damage *= 0.65f;
 	DamagePlayer(Damage);
 	return Damage;
 }

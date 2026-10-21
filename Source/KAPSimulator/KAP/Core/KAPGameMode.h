@@ -16,6 +16,7 @@ class AKAPWorldBuilder;
 class AWeatherManager;
 class ACameraActor;
 struct FKAPSession;
+struct FKAPContract;
 
 struct FKAPDialogOption
 {
@@ -131,6 +132,33 @@ public:
 	TMap<FName, TWeakObjectPtr<AKAPNPC>> NamedNPC;
 	/** Соңғы сөйлескен NPC (диалог дауысының жынысы үшін) */
 	TWeakObjectPtr<AKAPNPC> TalkNPC;
+	// ---- экономика: ақша, келісімшарттар, дүкен, полиция, әскери аймақ (KAPEconomy.cpp) ----
+	void AddMoney(int32 Amount, const FString& Why);
+	void BuildEconomyPlaces();
+	void SpawnEconomyNPCs();
+	void RefreshContracts(bool bForce = false);
+	TArray<FKAPContract*> ContractsOf(FName Board, int32 State);
+	void AcceptContract(int32 Uid);
+	void AbandonContract(int32 Uid);
+	void TrackContract(int32 Uid);
+	FKAPContract* FindContract(int32 Uid);
+	FString ContractProgress(const FKAPContract& C) const;
+	void ContractTick(float Dt);
+	void ContractKill(AKAPNPC* N, bool bByPlayer);
+	bool EconomyTalk(AKAPNPC* N);
+	FString EconomySpotText(const AKAPInteractSpot* Sp) const;
+	bool EconomySpotUse(AKAPInteractSpot* Sp);
+	struct FShopItem { FName Id; int32 Price; int32 Qty; int32 Cat; bool bPermit; };
+	static const TArray<FShopItem>& ShopItems();
+	int32 ShopPrice(const FShopItem& It, FName Kind) const;
+	bool CanBuy(const FShopItem& It, FName Kind, FString& Why) const;
+	void Buy(const FShopItem& It, FName Kind);
+	void SellScrap();
+	bool InArmyZone(FVector2D Pm) const;
+	FVector2D ArmyC = FVector2D::ZeroVector, ArmyHalf = FVector2D(62, 47);
+	float ArmyHostile = 0.f, ArmyInT = 0.f, ContractT = 0.f;
+	int32 ArmyWarnStage = 0;
+	bool bArmyBuilt = false;
 	TArray<FString> RadioLog;
 private:
 	void StartSession(bool bLoad);

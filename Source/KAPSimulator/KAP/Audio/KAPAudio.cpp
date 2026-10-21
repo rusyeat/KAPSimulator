@@ -173,6 +173,8 @@ void UKAPAudio::EnsureInit()
 {
 	if (bInit || !GetWorld() || !GetWorld()->IsGameWorld()) return;
 	bInit = true;
+	// жазылған дыбыс банктерін алдын ала жүктеу — алғашқы атыс/қадам кезінде кідіріс болмасын
+	for (const TCHAR* Bk : { TEXT("StepSand"), TEXT("StepConcrete"), TEXT("StepWood"), TEXT("StepDirt"), TEXT("StepMetal"), TEXT("ImpMetal"), TEXT("ImpWood"), TEXT("ImpBody"), TEXT("ImpSand"), TEXT("DoorOpen"), TEXT("DoorClose"), TEXT("Creak"), TEXT("Engine"), TEXT("Scream"), TEXT("Yell"), TEXT("Grunt"), TEXT("Moan"), TEXT("GunPM"), TEXT("GunAK"), TEXT("GunSniper"), TEXT("GunShotgun") }) HasBank(Bk);
 	UAudioComponent* C = nullptr;
 	Wind = MakeLoop(C, 0.02f, 0, 0);
 	Rain = MakeLoop(C, 0.3f, 0.8f, 0);

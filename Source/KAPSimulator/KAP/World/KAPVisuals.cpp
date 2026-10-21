@@ -144,3 +144,19 @@ namespace KAPVis
 		return C;
 	}
 }
+
+#include "Engine/Font.h"
+#include "Components/TextRenderComponent.h"
+namespace KAPVis
+{
+	UFont* SignFont()
+	{
+		static TWeakObjectPtr<UFont> F;
+		if (!F.IsValid()) F = LoadObject<UFont>(nullptr, TEXT("/Game/KAP/Fonts/F_KAP_Sign.F_KAP_Sign"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		return F.Get();
+	}
+	void SignText(UTextRenderComponent* T)
+	{
+		if (T) if (UFont* F = SignFont()) T->SetFont(F);
+	}
+}

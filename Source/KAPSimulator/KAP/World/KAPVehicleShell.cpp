@@ -253,7 +253,7 @@ bool AKAPVehicleHandle::BuildShellBody(USkeletalMeshComponent* M, float Xf, floa
 			{
 				UTextRenderComponent* T = NewObject<UTextRenderComponent>(Pawn);
 				T->SetupAttachment(M); T->SetRelativeLocation(B.O + FVector(-130.f, Sg * 109.f, 196.f)); T->SetRelativeRotation(FRotator(0, Sg * 90.f, 0));
-				T->SetText(FText::FromString(TEXT("СУ / ВОДА"))); T->SetHorizontalAlignment(EHTA_Center); T->SetWorldSize(32.f); T->SetTextRenderColor(FColor(40, 60, 140)); T->RegisterComponent();
+				KAPVis::SignText(T); T->SetText(FText::FromString(TEXT("СУ / ВОДА"))); T->SetHorizontalAlignment(EHTA_Center); T->SetWorldSize(32.f); T->SetTextRenderColor(FColor(40, 60, 140)); T->RegisterComponent();
 			}
 		}
 		else

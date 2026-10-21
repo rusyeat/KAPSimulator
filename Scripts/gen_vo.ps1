@@ -45,6 +45,8 @@ function AddIf([string]$t) {
 foreach ($f in @("$Src\NPC\KAPNPC.cpp", "$Src\NPC\KAPNPCTasks.cpp")) {
     foreach ($m in [regex]::Matches([IO.File]::ReadAllText($f), "TEXT\($lit\)")) { AddIf $m.Groups[1].Value }
 }
+# Экономика: полиция/дүкен/әскер диалогтары (ұзын сөйлемдер)
+foreach ($m in [regex]::Matches([IO.File]::ReadAllText("$Src\Core\KAPEconomy.cpp"), "TEXT\($lit\)")) { if ((Unescape $m.Groups[1].Value).Length -ge 40) { AddIf $m.Groups[1].Value } }
 # GameMode: субтитр, рация, диалог, кіріспе сөйлемдері
 $gm = [IO.File]::ReadAllLines("$Src\Core\KAPGameMode.cpp")
 foreach ($l in $gm) {
