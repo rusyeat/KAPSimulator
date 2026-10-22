@@ -668,7 +668,12 @@ void AKAPCharacter::UpdateSurvival(float Dt, double Dh)
 		if (Witness)
 		{
 			WarnT += Dt;
-			if (WarnT > 0.1f && WarnT < 0.2f) GM->Subtitle(TEXT("Қаруды жасыр! Рұқсатың жоқ!"), TEXT("Убери оружие! У тебя нет разрешения!"), Witness->DisplayName, 3);
+			if (WarnT > 0.1f && WarnT < 0.2f)
+			{
+				GM->Subtitle(TEXT("Қаруды жасыр! Рұқсатың жоқ!"), TEXT("Убери оружие! У тебя нет разрешения!"), Witness->DisplayName, 3);
+				// күзетші/жасақшы өзі айқайлайды (3D)
+				if (UKAPAudio* A = UKAPAudio::Get(this)) A->Speak(TEXT("Қаруды жасыр! Рұқсатың жоқ!"), Witness->GetActorLocation() + FVector(0, 0, 60), Witness->IsFemale(), 0, 1.4f);
+			}
 			if (WarnT > 3.5f) { GM->Provoke(TEXT("Рұқсатсыз қару! Күзет пен жасақ дұшпандыққа көшті.")); WarnT = 0; }
 		}
 		else WarnT = 0;

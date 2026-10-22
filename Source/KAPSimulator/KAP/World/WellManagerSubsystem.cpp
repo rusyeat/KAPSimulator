@@ -3,6 +3,7 @@
 #include "KAP/Core/KAPDataSubsystem.h"
 #include "KAP/Core/KAPGameInstance.h"
 #include "KAP/Core/KAPGameMode.h"
+#include "KAP/Audio/KAPAudio.h"
 #include "Engine/World.h"
 
 void UWellManagerSubsystem::InitFromData()
@@ -135,8 +136,16 @@ void UWellManagerSubsystem::StartFault(FKAPSession& S, int32 Index, EFaultType T
 	W.State = EWellState::Fault; W.Fault = Type; W.Timer = D->Cfg("stage1Hours", 6) * (0.8f + Rng.FRand() * 0.4f);
 	RefreshVisual(S, Index);
 	if (AKAPGameMode* GM = AKAPGameMode::Get(this))
+	{
+		// дауыс: «бесінші» + «ұңғымада сорғы тоқтады. Бұзылу кезеңі басталды.» (себебі тек субтитрде)
+		const TCHAR* FaultVo = Type == EFaultType::Pipe ? TEXT("ұңғымада құбыр жарылды. Бұзылу кезеңі басталды.")
+			: Type == EFaultType::Electric ? TEXT("ұңғымада электр ақауы. Бұзылу кезеңі басталды.")
+			: Type == EFaultType::Acid ? TEXT("ұңғымада қышқыл ағып жатыр. Бұзылу кезеңі басталды.")
+			: Type == EFaultType::Fire ? TEXT("ұңғымада өрт шықты. Бұзылу кезеңі басталды.")
+			: TEXT("ұңғымада сорғы тоқтады. Бұзылу кезеңі басталды.");
 		GM->Radio(FString::Printf(TEXT("№%d ұңғыма: %s%s. Бұзылу кезеңі басталды."), Index + 1, *KAP::FaultName(Type).ToString().ToLower(),
-			Reason.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Reason)), "warn");
+			Reason.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Reason)), "warn", { UKAPAudio::OrdinalKk(Index + 1), FaultVo });
+	}
 }
 
 void UWellManagerSubsystem::RepairWell(FKAPSession& S, int32 Index)
@@ -208,7 +217,9 @@ void UWellManagerSubsystem::KillWorker(FKAPSession& S, FKAPWorker& K)
 	if (K.bMutated) S.PendingMutants.Add(K.WellId);
 	if (AKAPGameMode* GM = AKAPGameMode::Get(this))
 	{
-		GM->Radio(FString::Printf(TEXT("%s (№%d) %s"), *K.Name, K.WellId, K.bMutated ? TEXT("қайтыс болды... денесі мутацияға ұшырады.") : TEXT("сәулеленуден қайтыс болды.")), "danger");
+		// дауыс: аты айтылмайды (жұмысшы көп), «бесінші» + «ұңғымадағы жұмысшы ... қайтыс болды»
+		GM->Radio(FString::Printf(TEXT("%s (№%d) %s"), *K.Name, K.WellId, K.bMutated ? TEXT("қайтыс болды... денесі мутацияға ұшырады.") : TEXT("сәулеленуден қайтыс болды.")), "danger",
+			{ UKAPAudio::OrdinalKk(K.WellId), K.bMutated ? FString(TEXT("ұңғымадағы жұмысшы қайтыс болды... денесі мутацияға ұшырады.")) : FString(TEXT("ұңғымадағы жұмысшы сәулеленуден қайтыс болды.")) });
 		GM->CheckEndings();
 	}
 }
@@ -248,7 +259,7 @@ void UWellManagerSubsystem::Simulate(FKAPSession& S, double Dh, float EnvTemp, f
 			{
 				W.State = EWellState::Leak; W.Timer = D->Cfg("stage2Hours", 5) * (0.8f + Rng.FRand() * 0.4f);
 				RefreshVisual(S, i);
-				if (GM) GM->Radio(FString::Printf(TEXT("№%d ұңғымада ерітінді АҒЫП ЖАТЫР! Жұмысшылар сәулеленуде."), i + 1), "danger");
+				if (GM) GM->Radio(FString::Printf(TEXT("№%d ұңғымада ерітінді АҒЫП ЖАТЫР! Жұмысшылар сәулеленуде."), i + 1), "danger", { UKAPAudio::OrdinalKk(i + 1), TEXT("ұңғымада ерітінді ағып жатыр! Жұмысшылар сәулеленуде.") });
 			}
 			break;
 		}
@@ -262,7 +273,7 @@ void UWellManagerSubsystem::Simulate(FKAPSession& S, double Dh, float EnvTemp, f
 				for (FKAPWorker& K : S.Workers)
 					if (K.WellId == i + 1 && K.EvacTo.IsEmpty() && K.State < 4) K.Dose += D->Cfg("fireDoseBurst", 260) * (K.bProtected ? 0.4f : 1.f);
 				RefreshVisual(S, i);
-				if (GM) { GM->Radio(FString::Printf(TEXT("№%d ұңғыма ЖАНЫП ЖАТЫР! Ұңғыма жоғалды."), i + 1), "danger"); GM->CheckEndings(); }
+				if (GM) { GM->Radio(FString::Printf(TEXT("№%d ұңғыма ЖАНЫП ЖАТЫР! Ұңғыма жоғалды."), i + 1), "danger", { UKAPAudio::OrdinalKk(i + 1), TEXT("ұңғыма жанып жатыр! Ұңғыма жоғалды.") }); GM->CheckEndings(); }
 			}
 			break;
 		case EWellState::Fire:
@@ -351,7 +362,7 @@ void UWellManagerSubsystem::Dispatch(FKAPSession& S, FName BrigadeId, int32 Well
 		KAPAI::FRoute R = D->Graph.Route(B.Pos, T, true, DangerFn ? DangerFn : [](double, double) { return 0.0; });
 		B.Route = R.bValid ? R.Points : TArray<FVector2D>{ T };
 		B.Ri = 0; B.State = "travel"; B.Target = WellId;
-		if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Radio(FString::Printf(TEXT("Бригада №%d ұңғымаға шықты."), WellId), "info");
+		if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->Radio(FString::Printf(TEXT("Бригада №%d ұңғымаға шықты."), WellId), "info", { TEXT("Бригада"), UKAPAudio::OrdinalKk(WellId), TEXT("ұңғымаға шықты.") });
 	}
 }
 
@@ -391,7 +402,7 @@ void UWellManagerSubsystem::UpdateBrigades(FKAPSession& S, double DtReal, double
 				RepairWell(S, I);
 				if (AKAPGameMode* GM = AKAPGameMode::Get(this))
 				{
-					GM->Radio(FString::Printf(TEXT("Бригада №%d ұңғыманы жөндеді."), I + 1), "ok");
+					GM->Radio(FString::Printf(TEXT("Бригада №%d ұңғыманы жөндеді."), I + 1), "ok", { TEXT("Бригада"), UKAPAudio::OrdinalKk(I + 1), TEXT("ұңғыманы жөндеді.") });
 					GM->OnWellRepaired(I, true);
 				}
 				Return(B);

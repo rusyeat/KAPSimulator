@@ -243,6 +243,24 @@ void AKAPGameMode::BeginPlay()
 		for (int32 s = 130; s < 140; s += 2) { FTimerHandle Hs; GetWorldTimerManager().SetTimer(Hs, FTimerDelegate::CreateLambda([Log, s]() { Log(*FString::Printf(TEXT("t=%d"), s), true); }), (float)s, false); }
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 141.f, false);
 	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvochain")))
+	{
+		// Динамикалық дауыс тізбектерін тексеру: №5 ұңғыма ақауы → ағу → өрт, жұмысшы өлімі, бригада, финал себебі
+		UWellManagerSubsystem* WMs = GetWorld()->GetSubsystem<UWellManagerSubsystem>();
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { if (Cine.IsSet()) SkipCinematic(); } },
+			{ 13.f, [this, WMs]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN fault")); WMs->StartFault(S(), 4, EFaultType::Acid, FString()); } },
+			{ 19.f, [this, WMs]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN leak")); S().Wells[4].Timer = 0.f; WMs->Simulate(S(), 0.01, 25.f, 0.f, 0.f); } },
+			{ 25.f, [this, WMs]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN fire")); S().Wells[4].Timer = 0.f; WMs->Simulate(S(), 0.01, 25.f, 0.f, 0.f); } },
+			{ 31.f, [this, WMs]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN death")); for (FKAPWorker& K : S().Workers) if (K.State < 4 && !K.bSpecial) { WMs->KillWorker(S(), K); break; } } },
+			{ 37.f, [this]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN brigade")); Radio(TEXT("Бригада №12 ұңғыманы жөндеді."), "ok", { TEXT("Бригада"), UKAPAudio::OrdinalKk(12), TEXT("ұңғыманы жөндеді.") }); } },
+			{ 42.f, [this]() { UE_LOG(LogTemp, Display, TEXT("KAPCHAIN report")); SendReport(); } },
+			{ 49.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
+	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapaudiostress")))
 	{
 		// Дыбыс құлауын тексеру: көп синтез-дыбыс (дауыс, оқ, қадам, рация) ойнап тұрғанда картаны қайта жүктеу ×4
@@ -824,12 +842,18 @@ void AKAPGameMode::SpawnPersistentNPCs()
 // =====================================================================
 // Хабарламалар
 // =====================================================================
-void AKAPGameMode::Radio(const FString& Msg, FName Kind)
+void AKAPGameMode::Radio(const FString& Msg, FName Kind, const TArray<FString>& VoChain)
 {
 	Toast(TEXT("Радио: ") + Msg, Kind);
 	RadioLog.Add(KAP::FmtTime(S().Time) + TEXT("  ") + Msg);
 	if (RadioLog.Num() > 60) RadioLog.RemoveAt(0);
-	if (UKAPAudio* A = UKAPAudio::Get(this)) { A->SetRadio(1.f); bRadioPulse = true; if (!A->Speak(Msg, FVector::ZeroVector, Msg.Len() % 3 == 0, 2)) A->RadioVoice(FMath::Clamp(Msg.Len() * 0.055f, 1.2f, 4.f), Msg.Len() % 3 == 0); }
+	if (UKAPAudio* A = UKAPAudio::Get(this))
+	{
+		A->SetRadio(1.f); bRadioPulse = true;
+		// динамикалық хабарлар (ұңғыма нөмірі, жұмысшы) — әйел диспетчердің бөлік-файлдарынан құралады
+		const bool bOk = VoChain.Num() ? A->SpeakChain(VoChain, FVector::ZeroVector, true, 2) : A->Speak(Msg, FVector::ZeroVector, Msg.Len() % 3 == 0, 2);
+		if (!bOk) A->RadioVoice(FMath::Clamp(Msg.Len() * 0.055f, 1.2f, 4.f), Msg.Len() % 3 == 0);
+	}
 	FTimerHandle H;
 	GetWorldTimerManager().SetTimer(H, [this]() { if (UKAPAudio* A = UKAPAudio::Get(this)) A->SetRadio(0); }, 0.4f, false);
 }
@@ -1827,6 +1851,13 @@ void AKAPGameMode::Talk(AKAPNPC* N)
 			O.Add({ TEXT("Не естідіңіз?"), [this, K]() { StartQuest("s_missing"); Dialog(K.Name, TEXT("Біздің Нұрлан Есенов оңтүстіктегі құмды төбелерге кетіп жоғалды. Тапсаңыз екен..."), { { TEXT("Іздеймін."), nullptr, false } }); }, false });
 		O.Add({ TEXT("Шыдаңыз. Мен ұңғыманы жөндеймін."), nullptr, false });
 		Dialog(Name, Tx, O);
+		{
+			// дауыс: тек жұмысшының өз сөзі (аты, жасы, доза — мәтінде ғана)
+			static const TCHAR* Say[4] = { TEXT("Жағдайымыз жақсы, инженер. Тек ұңғымаларды тастап кетпеңіз."), TEXT("Басым айналып тұр... жүрегім айнып жүр."), TEXT("Тұра алмай жатырмын... Көмектесіңізші."), TEXT("...(әрең дем алып жатыр)") };
+			TArray<FString> Vo = { Say[FMath::Clamp(K.State, 0, 3)] };
+			if (K.bSpecial) Vo.Add(TEXT("Анам Ақсайда күтіп отыр. Оқуымды бітіріп, оған үй салып беремін деп едім..."));
+			if (UKAPAudio* A = UKAPAudio::Get(this)) A->SpeakChain(Vo, FVector::ZeroVector, false, 1);
+		}
 		return;
 	}
 	if (T == "nurlan")
@@ -1890,6 +1921,8 @@ void AKAPGameMode::SendReport()
 	const bool b1 = Ok >= NeedW, b2 = Active == 0, b3 = Ss.Mutation < NeedM;
 	const FString Tx = FString::Printf(TEXT("%s Жұмыс істейтін ұңғыма ≥ %d (қазір %d)\n%s Ағу немесе өрт жоқ (қазір %d)\n%s Мутация < %d%% (қазір %d%%)"),
 		b1 ? TEXT("✔") : TEXT("✘"), NeedW, Ok, b2 ? TEXT("✔") : TEXT("✘"), Active, b3 ? TEXT("✔") : TEXT("✘"), (int32)NeedM, FMath::RoundToInt32(Ss.Mutation));
+	// дауыс: шарттар тізімі мәтінде, рацияда тек қорытынды (басқарма диспетчері, ер)
+	ON_SCOPE_EXIT { if (UKAPAudio* A = UKAPAudio::Get(this)) A->SpeakChain({ (b1 && b2 && b3) ? FString(TEXT("Шарттар орындалды. Есеп жіберілсін бе?")) : FString(TEXT("Құтқару шарттары орындалмаған. Қазір жіберсеңіз, орталық аймақты жабады — «Қашу» соңы.")) }, FVector::ZeroVector, false, 2); };
 	if (b1 && b2 && b3) Dialog(TEXT("Басқарма радиосы"), TEXT("Шарттар орындалды:\n") + Tx + TEXT("\n\nЕсеп жіберілсін бе?"), { { TEXT("Есепті жіберу"), [this]() { Ending(true, FString()); }, false }, { TEXT("Әлі емес"), nullptr, false } });
 	else Dialog(TEXT("Басқарма радиосы"), TEXT("Құтқару шарттары орындалмаған:\n") + Tx + TEXT("\n\nҚазір жіберсеңіз, орталық аймақты жабады — «Қашу» соңы."), { { TEXT("Бәрібір жіберу"), [this]() { Ending(false, TEXT("Аймақ ерте жабылды.")); }, false }, { TEXT("Жоқ, жұмысты жалғастырамын"), nullptr, false } });
 }
@@ -2097,6 +2130,12 @@ void AKAPGameMode::EndingFail(const FString& Why, bool bErlanWasAlive)
 	for (int32 i = 0; i < 6; i++) if (AKAPNPC* W = SpawnNPC((int32)ENPCKind::Wolf, FVector2D(-285, -205), TEXT(""), true)) { W->SetActorEnableCollision(false); W->GetCharacterMovement()->DisableMovement(); Wolves.Add(W); CineActors.Add(W); }
 	static const FVector2D Path[5] = { FVector2D(-285, -205), FVector2D(0, 300), FVector2D(-250, 300), FVector2D(-600, 480), FVector2D(-820, 760) };
 	Subtitle(TEXT("«Қашу». ") + Why, TEXT("Финал «Побег»."), FString(), 6);
+	// себебінде сан бар (жанған ұңғыма, қаза тапқандар) — дауыс «көбі» деп айтады
+	if (UKAPAudio* A = UKAPAudio::Get(this))
+	{
+		if (Why.StartsWith(TEXT("Ұңғымалардың "))) A->SpeakChain({ TEXT("Қашу."), TEXT("Ұңғымалардың көбі жанып кетті.") }, FVector::ZeroVector, false, 1);
+		else if (Why.StartsWith(TEXT("Жұмысшылардың "))) A->SpeakChain({ TEXT("Қашу."), TEXT("Жұмысшылардың көбі қаза тапты.") }, FVector::ZeroVector, false, 1);
+	}
 	TWeakObjectPtr<AKAPVehicleHandle> WV = V;
 	StartCine(26.f, [this, WV, Wolves](float T, float Dt)
 	{

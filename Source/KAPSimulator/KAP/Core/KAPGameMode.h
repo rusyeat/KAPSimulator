@@ -50,7 +50,8 @@ public:
 	double LastDh = 0;
 
 	// ---- хабарламалар ----
-	void Radio(const FString& Msg, FName Kind);
+	/** VoChain — динамикалық хабар үшін дауыс бөліктері (ұңғыма нөмірі + тұрақты сөз тіркесі); бос болса — бүкіл мәтін бір файлмен */
+	void Radio(const FString& Msg, FName Kind, const TArray<FString>& VoChain = TArray<FString>());
 	void Toast(const FString& Msg, FName Kind);
 	void Subtitle(const FString& Kk, const FString& Ru, const FString& Who, float Dur);
 	void Dialog(const FString& Name, const FString& Text, TArray<FKAPDialogOption> Opts);

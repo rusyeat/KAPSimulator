@@ -114,6 +114,11 @@ public:
 	/** Сөйлемді жазылған дауыспен айту: Mode 0 — 3D (NPC), 1 — 2D (ойыншы/диктор), 2 — рация. Дауыс табылмаса false */
 	bool Speak(const FString& Text, FVector Loc, bool bFemale, int32 Mode = 0, float Vol = 1.f, float Pitch = 1.f);
 	void StopSpeech();
+	/** Бірнеше дауыс файлын қатар ойнату (динамикалық сөйлем: «бесінші» + «ұңғымада ерітінді ағып жатыр!»).
+	 *  Бөліктердің бәрі табылса ғана ойнайды және true қайтарады */
+	bool SpeakChain(const TArray<FString>& Parts, FVector Loc, bool bFemale, int32 Mode = 1, float Vol = 1.f);
+	/** 1–21: «бірінші» … «жиырма бірінші» (рет сан есім, ұңғыма нөмірі үшін) */
+	static FString OrdinalKk(int32 N);
 	/** NPC атысы (алыста, жаңғырықпен) */
 	void ShotAt(FName Weapon, FVector Loc);
 	/** Адамның айқайы: қорқыныш/ауырсыну (bDeath — өлім айқайы) */
@@ -178,6 +183,11 @@ private:
 	UPROPERTY() TObjectPtr<UAudioComponent> MusCalm;
 	UPROPERTY() TObjectPtr<UAudioComponent> MusDanger;
 	UPROPERTY() TObjectPtr<UAudioComponent> SpeechC;
+	USoundWave* LoadVo(const FString& Text, bool bFemale) const;
+	UAudioComponent* PlayVoWave(USoundWave* W, FVector Loc, int32 Mode, float Vol, float Pitch, bool bFirst);
+	void ChainStep(int32 Id, int32 I, FVector Loc, int32 Mode, float Vol);
+	UPROPERTY() TArray<TObjectPtr<USoundWave>> ChainWaves;
+	int32 ChainId = 0;
 	float EngOn = 0.f, EngRpm = 0.f, EngMis = 0.f, EngLoV = 0.f, EngHiV = 0.f, MusI = 0.f, MusV = 0.f, MusCalmV = 0.f, MusDangerV = 0.f;
 	bool bRealEngine = false, bRealMusic = false;
 	void UpdateReal(float Dt);

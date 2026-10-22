@@ -81,33 +81,83 @@ void UKAPAudio::SetMenuMusic(bool bOn)
 	}
 }
 
-bool UKAPAudio::Speak(const FString& Text, FVector Loc, bool bFemale, int32 Mode, float Vol, float Pitch)
+USoundWave* UKAPAudio::LoadVo(const FString& Text, bool bFemale) const
 {
-	if (!GetWorld() || Text.IsEmpty()) return false;
 	const FString N = FString::Printf(TEXT("VO_%08x_%s"), VoHash(Text), bFemale ? TEXT("f") : TEXT("m"));
 	USoundWave* W = LoadObject<USoundWave>(nullptr, *FString::Printf(TEXT("/Game/KAP/Audio/VO/%s.%s"), *N, *N), nullptr, LOAD_NoWarn | LOAD_Quiet);
-	UE_LOG(LogTemp, Log, TEXT("KAPVO %s %s mode=%d"), *N, W ? TEXT("ok") : TEXT("miss"), Mode);
-	if (!W) return false;
+	UE_LOG(LogTemp, Log, TEXT("KAPVO %s %s"), *N, W ? TEXT("ok") : TEXT("miss"));
+	return W;
+}
+
+/** Бір дауыс файлын ойнату: 0 — 3D (NPC), 1 — 2D (диалог, диктор), 2 — рация (жолақ сүзгісі; bFirst — басында «тшш») */
+UAudioComponent* UKAPAudio::PlayVoWave(USoundWave* W, FVector Loc, int32 Mode, float Vol, float Pitch, bool bFirst)
+{
+	if (!W || !GetWorld()) return nullptr;
 	UAudioComponent* C = Mode == 0
 		? UGameplayStatics::SpawnSoundAtLocation(GetWorld(), W, Loc, FRotator::ZeroRotator, Vol * 1.4f, Pitch, 0.f, Atten())
 		: UGameplayStatics::SpawnSound2D(GetWorld(), W, Vol * (Mode == 2 ? 0.8f : 1.f), Pitch);
-	if (!C) return false;
+	if (!C) return nullptr;
 	if (Mode == 2)
 	{
 		// рация: жолақ сүзгісі (420 Гц – 3.2 кГц) + басында «тшш»
 		C->SetLowPassFilterEnabled(true); C->SetLowPassFilterFrequency(3200.f);
 		C->SetHighPassFilterEnabled(true); C->SetHighPassFilterFrequency(420.f);
-		Impact(FVector::ZeroVector, 4, 0.4f);
+		if (bFirst) Impact(FVector::ZeroVector, 4, 0.4f);
 		SetRadio(1.f);
 		FTimerHandle H; TWeakObjectPtr<UKAPAudio> Self(this);
 		GetWorld()->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([Self]() { if (Self.IsValid()) Self->SetRadio(0.f); }), FMath::Max(0.3f, W->Duration), false);
 	}
-	if (Mode != 0) { if (SpeechC) SpeechC->FadeOut(0.15f, 0.f); SpeechC = C; }
+	if (Mode != 0) { if (SpeechC && bFirst) SpeechC->FadeOut(0.15f, 0.f); SpeechC = C; }
 	Duck(W->Duration, Mode == 0 ? 0.2f : 0.4f);
+	return C;
+}
+
+bool UKAPAudio::Speak(const FString& Text, FVector Loc, bool bFemale, int32 Mode, float Vol, float Pitch)
+{
+	if (!GetWorld() || Text.IsEmpty()) return false;
+	USoundWave* W = LoadVo(Text, bFemale);
+	if (!W) return false;
+	if (Mode != 0) ChainId++; // жаңа сөз алдыңғы тізбекті тоқтатады
+	return PlayVoWave(W, Loc, Mode, Vol, Pitch, true) != nullptr;
+}
+
+bool UKAPAudio::SpeakChain(const TArray<FString>& Parts, FVector Loc, bool bFemale, int32 Mode, float Vol)
+{
+	if (!GetWorld() || Parts.Num() == 0) return false;
+	TArray<TObjectPtr<USoundWave>> Ws;
+	for (const FString& P : Parts)
+	{
+		USoundWave* W = LoadVo(P, bFemale);
+		if (!W) return false; // бір бөлігі жоқ — тізбекті ойнатпаймыз (синтез дауыс қалады)
+		Ws.Add(W);
+	}
+	ChainWaves = MoveTemp(Ws);
+	const int32 Id = ++ChainId;
+	ChainStep(Id, 0, Loc, Mode, Vol);
 	return true;
 }
 
-void UKAPAudio::StopSpeech() { if (SpeechC) { SpeechC->FadeOut(0.2f, 0.f); SpeechC = nullptr; } }
+void UKAPAudio::ChainStep(int32 Id, int32 I, FVector Loc, int32 Mode, float Vol)
+{
+	if (Id != ChainId || !ChainWaves.IsValidIndex(I) || !GetWorld()) return;
+	USoundWave* W = ChainWaves[I];
+	if (!PlayVoWave(W, Loc, Mode, Vol, 1.f, I == 0)) return;
+	UE_LOG(LogTemp, Display, TEXT("KAPVO chain %d/%d %s (%.2f s)"), I + 1, ChainWaves.Num(), *W->GetName(), W->Duration);
+	if (I + 1 >= ChainWaves.Num()) return;
+	// келесі бөлік — осы файл біткенде (сөз арасында 60 мс тыныс)
+	FTimerHandle H; TWeakObjectPtr<UKAPAudio> Self(this);
+	GetWorld()->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([Self, Id, I, Loc, Mode, Vol]() { if (Self.IsValid()) Self->ChainStep(Id, I + 1, Loc, Mode, Vol); }), FMath::Max(0.05f, W->Duration + 0.06f), false);
+}
+
+FString UKAPAudio::OrdinalKk(int32 N)
+{
+	static const TCHAR* O[21] = { TEXT("бірінші"), TEXT("екінші"), TEXT("үшінші"), TEXT("төртінші"), TEXT("бесінші"), TEXT("алтыншы"), TEXT("жетінші"),
+		TEXT("сегізінші"), TEXT("тоғызыншы"), TEXT("оныншы"), TEXT("он бірінші"), TEXT("он екінші"), TEXT("он үшінші"), TEXT("он төртінші"),
+		TEXT("он бесінші"), TEXT("он алтыншы"), TEXT("он жетінші"), TEXT("он сегізінші"), TEXT("он тоғызыншы"), TEXT("жиырмасыншы"), TEXT("жиырма бірінші") };
+	return (N >= 1 && N <= 21) ? FString(O[N - 1]) : FString();
+}
+
+void UKAPAudio::StopSpeech() { ChainId++; if (SpeechC) { SpeechC->FadeOut(0.2f, 0.f); SpeechC = nullptr; } }
 
 void UKAPAudio::ShotAt(FName Weapon, FVector Loc)
 {
