@@ -56,6 +56,7 @@ class KAPSIMULATOR_API UKAPAudio : public UWorldSubsystem
 	GENERATED_BODY()
 public:
 	static UKAPAudio* Get(const UObject* Ctx);
+	virtual void Deinitialize() override;
 	void EnsureInit();
 	void SetWind(float L);
 	void SetRain(float L);
@@ -169,7 +170,7 @@ private:
 	FString CaptureName;
 	void WriteWav(const FString& Name, const TArray<int16>& Pcm, bool bReport = true);
 	UPROPERTY() TArray<TObjectPtr<UAudioComponent>> Comps;
-	UPROPERTY() TArray<TObjectPtr<USoundWaveProcedural>> OneShots;
+	// (бір реттік толқындар енді KAPWaveKeep-те — KAPAudio.cpp)
 	bool bInit = false;
 	UPROPERTY() TMap<FName, FKAPSoundBank> Banks;
 	UPROPERTY() TObjectPtr<UAudioComponent> EngLo;

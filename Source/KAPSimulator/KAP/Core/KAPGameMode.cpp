@@ -243,6 +243,41 @@ void AKAPGameMode::BeginPlay()
 		for (int32 s = 130; s < 140; s += 2) { FTimerHandle Hs; GetWorldTimerManager().SetTimer(Hs, FTimerDelegate::CreateLambda([Log, s]() { Log(*FString::Printf(TEXT("t=%d"), s), true); }), (float)s, false); }
 		FTimerHandle He; GetWorldTimerManager().SetTimer(He, FTimerDelegate::CreateLambda([]() { FGenericPlatformMisc::RequestExit(false); }), 141.f, false);
 	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapaudiostress")))
+	{
+		// Дыбыс құлауын тексеру: көп синтез-дыбыс (дауыс, оқ, қадам, рация) ойнап тұрғанда картаны қайта жүктеу ×4
+		// (бұрын «Басты мәзір» / қайта жүктеуде Assertion SoundGenerator.IsValid() шығатын)
+		static int32 Cycle = 0; Cycle++;
+		UE_LOG(LogTemp, Display, TEXT("KAPAUDIO cycle %d start"), Cycle);
+		const bool bGame = (Cycle % 2) == 1; // тақ айналымда ойын ішінде, жұпта — мәзірде
+		if (bGame)
+		{
+			FTimerHandle H0; GetWorldTimerManager().SetTimer(H0, FTimerDelegate::CreateLambda([this]() { MenuNewGame(); }), 2.f, false);
+			FTimerHandle H1; GetWorldTimerManager().SetTimer(H1, FTimerDelegate::CreateLambda([this]() { if (Cine.IsSet()) SkipCinematic(); }), 7.f, false);
+		}
+		const float T0 = bGame ? 8.f : 2.f;
+		for (int32 k = 0; k < 60; k++)
+		{
+			FTimerHandle Hk; GetWorldTimerManager().SetTimer(Hk, FTimerDelegate::CreateLambda([this, k]()
+			{
+				UKAPAudio* Au = UKAPAudio::Get(this); AKAPCharacter* P = Player(); if (!Au || !P) return;
+				const FVector L = P->GetActorLocation() + FVector(FMath::FRandRange(-800.f, 800.f), FMath::FRandRange(-800.f, 800.f), 0);
+				Au->Voice(L, 2.5f + (k % 3), (k % 2) == 0, 0.6f);
+				Au->PlayAt((EKAPSound)(k % 6), L, 0.6f);
+				Au->Footstep(L, k % 4, 0.5f, (k % 2) == 0);
+				Au->Yell(L, (k % 5) == 0);
+				if (k % 4 == 0) Au->RadioVoice(2.f, (k % 8) == 0);
+				if (k % 3 == 0) Au->Shot(k % 2 ? FName("ak") : FName("pm"));
+			}), T0 + k * 0.05f, false);
+		}
+		// дыбыстар әлі ойнап тұрғанда — қайта жүктеу (бұрынғы құлау сәті)
+		FTimerHandle Hr; GetWorldTimerManager().SetTimer(Hr, FTimerDelegate::CreateLambda([this]()
+		{
+			UE_LOG(LogTemp, Display, TEXT("KAPAUDIO cycle %d reload"), Cycle);
+			if (Cycle >= 4) { UE_LOG(LogTemp, Display, TEXT("KAPAUDIO PASS: 4 reloads without crash")); FGenericPlatformMisc::RequestExit(false); return; }
+			UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this)));
+		}), T0 + 3.5f, false);
+	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kaphittest")))
 	{
 		// Адамдарға зақым тексеру: А — АК-мен атылады (жолақ, өлім, рагдолл), Б — Нива қағады (ұшып өледі)

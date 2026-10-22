@@ -9,8 +9,32 @@
 #include "Sound/SoundWave.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/Package.h"
+#include "Containers/Ticker.h"
+#include "Misc/CoreDelegates.h"
+#include "AudioDevice.h"
 
 static constexpr int32 SR = 44100;
+
+// Процедуралық дыбыс толқындарын ұстаушы. GC ойнап жатқан толқынды жойса, аудио ағыны құлайды
+// (Assertion: SoundGenerator.IsValid() || SoundWave->bProcedural) — бұрын бір реттік дыбыстар 32–48 орынды
+// сақинада ұсталып, ойнап тұрғанда шығарылып кететін; карта қайта жүктелгенде циклдер әлеммен бірге жойылатын.
+// Енді: толқын ойнап біткенше + 3 с ұсталады; әлем жабылғанда дыбыстар тоқтатылып, 4 с кейін босатылады.
+// Outer — Transient пакеті (әлем жадта «ағып» қалмасын).
+namespace KAPWaveKeep
+{
+	struct FKeep { TStrongObjectPtr<USoundWave> W; double Until = 0; };
+	static TArray<FKeep>& List() { static TArray<FKeep> L; return L; }
+	static FTSTicker::FDelegateHandle& TickH() { static FTSTicker::FDelegateHandle H; return H; }
+	static void Ensure()
+	{
+		if (TickH().IsValid()) return;
+		TickH() = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float) { const double Now = FPlatformTime::Seconds(); List().RemoveAll([Now](const FKeep& K) { return K.Until < Now; }); return true; }), 0.5f);
+		FCoreDelegates::OnPreExit.AddLambda([]() { List().Empty(); if (TickH().IsValid()) { FTSTicker::GetCoreTicker().RemoveTicker(TickH()); TickH().Reset(); } });
+	}
+	static void Add(USoundWave* W, double Life) { if (!W) return; Ensure(); FKeep K; K.W.Reset(W); K.Until = FPlatformTime::Seconds() + Life; List().Add(MoveTemp(K)); }
+	static void ExpireAll(double In) { const double T = FPlatformTime::Seconds() + In; for (FKeep& K : List()) K.Until = FMath::Min(K.Until, T); }
+	static int32 Num() { return List().Num(); }
+}
 #include "KAPGeigerClicks.inl"
 static void Noise(TArray<int16>& Out, float Dur, float Vol, float Cut, float Decay);
 static void Tone(TArray<int16>& Out, float Start, float Dur, float Hz, float Vol, float SlideTo = 0, int32 Wave = 0);
@@ -169,9 +193,21 @@ UKAPAudio* UKAPAudio::Get(const UObject* Ctx)
 	return A;
 }
 
+void UKAPAudio::Deinitialize()
+{
+	// карта ауысады / ойын жабылады: алдымен осы әлемнің барлық дыбысын тоқтатып, аудио ағынын күтеміз,
+	// содан кейін ғана толқындар босатылады (4 с кейін) — ойнап тұрған толқын жойылмайды
+	for (UAudioComponent* C : Comps) if (IsValid(C)) C->Stop();
+	for (UAudioComponent* C : { MusMenu.Get(), EngLo.Get(), EngHi.Get(), MusCalm.Get(), MusDanger.Get(), SpeechC.Get() }) if (IsValid(C)) C->Stop();
+	if (UWorld* W = GetWorld()) if (FAudioDevice* AD = W->GetAudioDeviceRaw()) AD->Flush(W, false);
+	KAPWaveKeep::ExpireAll(4.0);
+	Super::Deinitialize();
+}
+
 UKAPSynthWave* UKAPAudio::MakeLoop(UAudioComponent*& OutComp, float Cutoff, float HighPass, float Tone)
 {
-	UKAPSynthWave* W = NewObject<UKAPSynthWave>(this);
+	UKAPSynthWave* W = NewObject<UKAPSynthWave>(GetTransientPackage());
+	KAPWaveKeep::Add(W, 1e9); // әлем жабылғанша
 	W->Cutoff = Cutoff; W->HighPass = HighPass; W->ToneHz = Tone;
 	OutComp = UGameplayStatics::CreateSound2D(GetWorld(), W, 1.f, 1.f, 0.f, nullptr, true, false);
 	if (OutComp) { OutComp->bAutoDestroy = false; OutComp->Play(); Comps.Add(OutComp); }
@@ -306,12 +342,12 @@ void UKAPAudio::PlayBuffer(const TArray<int16>& Pcm, float Vol)
 	if (!GetWorld()) return;
 	TArray<int16> P2 = Pcm; Finalize(P2);
 	if (bCapture) return;
-	USoundWaveProcedural* W = NewObject<USoundWaveProcedural>(this);
+	if (KAPWaveKeep::Num() > 600) return; // тым көп дыбыс бір уақытта — жаңасын өткізіп жібереміз
+	USoundWaveProcedural* W = NewObject<USoundWaveProcedural>(GetTransientPackage());
 	W->SetSampleRate(SR); W->NumChannels = 1; W->Duration = Pcm.Num() / (float)SR; W->SoundGroup = SOUNDGROUP_Default; W->bLooping = false;
 	W->QueueAudio(reinterpret_cast<const uint8*>(P2.GetData()), P2.Num() * 2);
+	KAPWaveKeep::Add(W, W->Duration / 0.8 + 3.0); // ойнап біткенше (баяу pitch-ті ескеріп) + қор
 	UGameplayStatics::PlaySound2D(GetWorld(), W, Vol);
-	OneShots.Add(W);
-	if (OneShots.Num() > 32) OneShots.RemoveAt(0);
 }
 
 static void Noise(TArray<int16>& Out, float Dur, float Vol, float Cut, float Decay)
@@ -415,11 +451,11 @@ USoundAttenuation* UKAPAudio::Atten()
 USoundWaveProcedural* UKAPAudio::MakeBuffer(const TArray<int16>& PcmIn)
 {
 	TArray<int16> Pcm = PcmIn; Finalize(Pcm);
-	USoundWaveProcedural* W = NewObject<USoundWaveProcedural>(this);
+	if (KAPWaveKeep::Num() > 600) return nullptr; // PlaySoundAtLocation(nullptr) — қауіпсіз, ештеңе ойнамайды
+	USoundWaveProcedural* W = NewObject<USoundWaveProcedural>(GetTransientPackage());
 	W->SetSampleRate(SR); W->NumChannels = 1; W->Duration = Pcm.Num() / (float)SR; W->SoundGroup = SOUNDGROUP_Default; W->bLooping = false;
 	W->QueueAudio(reinterpret_cast<const uint8*>(Pcm.GetData()), Pcm.Num() * 2);
-	OneShots.Add(W);
-	if (OneShots.Num() > 48) OneShots.RemoveAt(0);
+	KAPWaveKeep::Add(W, W->Duration / 0.8 + 3.0);
 	return W;
 }
 
@@ -512,7 +548,8 @@ static void GenVoice(TArray<int16>& Out, float Seconds, bool bFemale, int32 Seed
 
 UAudioComponent* UKAPAudio::AttachHum(USceneComponent* To, float Hz)
 {
-	UKAPSynthWave* W = NewObject<UKAPSynthWave>(this);
+	UKAPSynthWave* W = NewObject<UKAPSynthWave>(GetTransientPackage());
+	KAPWaveKeep::Add(W, 1e9);
 	W->Cutoff = 0.03f; W->ToneHz = Hz; W->TargetGain = 0.12f; W->Gain = 0.12f;
 	UAudioComponent* C = UGameplayStatics::SpawnSoundAttached(W, To, NAME_None, FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, true, 1.f, 1.f, 0.f, Atten(), nullptr, false);
 	return C;
@@ -590,7 +627,8 @@ void UKAPAudio::Footstep(FVector Loc, int32 Surface, float Vol, bool bRun)
 // Сирена: компонентке тіркелген 3D цикл (дауысы TargetGain арқылы)
 UKAPSynthWave* UKAPAudio::AttachSiren(USceneComponent* To)
 {
-	UKAPSynthWave* W = NewObject<UKAPSynthWave>(this);
+	UKAPSynthWave* W = NewObject<UKAPSynthWave>(GetTransientPackage());
+	KAPWaveKeep::Add(W, 1e9);
 	W->Mode = 5; W->TargetGain = 0.f; W->Gain = 0.f;
 	UAudioComponent* C = UGameplayStatics::SpawnSoundAttached(W, To, NAME_None, FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, true, 1.f, 1.f, 0.f, AttenFar(), nullptr, false);
 	(void)C;
