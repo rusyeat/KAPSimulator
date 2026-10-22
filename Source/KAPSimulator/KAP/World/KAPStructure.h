@@ -58,7 +58,7 @@ public:
 private:
 	friend class AKAPWorldBuilder;
 	/** LocalHinge — топса (ойықтың төменгі бұрышы, жергілікті см), полотно жергілікті LocalYaw бағытында */
-	class AKAPDoor* AddDoor(FVector LocalHinge, float LocalYaw, float Width, float Height, float OpenYaw, int32 Sound, const struct FKAPMat& Panel, const struct FKAPMat& Handle);
+	class AKAPDoor* AddDoor(FVector LocalHinge, float LocalYaw, float Width, float Height, float OpenYaw, int32 Sound, const struct FKAPMat& PanelMat, const struct FKAPMat& Handle);
 	void BuildWorkshop(FRandomStream& R, bool bBig);
 	void AddFlickLamp(FVector Pos, float Cd, bool bBad, bool bShadow, FLinearColor Col);
 	void AddAlarm(FVector Pos, float Yaw);

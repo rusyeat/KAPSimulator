@@ -18,16 +18,16 @@ AKAPDoor::AKAPDoor()
 	Hinge->SetupAttachment(RootComponent);
 }
 
-void AKAPDoor::Build(float Width, float Height, float InOpenYaw, int32 Sound, const FKAPMat& Panel, const FKAPMat& Handle)
+void AKAPDoor::Build(float Width, float Height, float InOpenYaw, int32 Sound, const FKAPMat& PanelMat, const FKAPMat& Handle)
 {
 	W = Width; H = Height; OpenYaw = InOpenYaw; SoundType = Sound;
 	// полотно: ойыншыны да, NPC-ді де, көлікті де өткізбейді (WorldDynamic)
-	Leaf = KAPVis::Add(this, Hinge, EKAPShape::Cube, FVector(W * 0.5f, 0, H * 0.5f), FVector(W - 4.f, 5.f, H - 2.f), Panel, FRotator::ZeroRotator, true);
+	Leaf = KAPVis::Add(this, Hinge, EKAPShape::Cube, FVector(W * 0.5f, 0, H * 0.5f), FVector(W - 4.f, 5.f, H - 2.f), PanelMat, FRotator::ZeroRotator, true);
 	Leaf->SetCollisionObjectType(ECC_WorldDynamic);
 	Leaf->CanCharacterStepUpOn = ECB_No;
 	// көлденең жолақтар (полотно тегіс болмасын), екі жақта тұтқа, топса ілмектері
 	for (float Z : { H * 0.3f, H * 0.72f }) for (float S : { -1.f, 1.f })
-		KAPVis::Add(this, Hinge, EKAPShape::Cube, FVector(W * 0.5f, S * 3.f, Z), FVector(W - 16.f, 2.f, 10.f), Panel, FRotator::ZeroRotator, false);
+		KAPVis::Add(this, Hinge, EKAPShape::Cube, FVector(W * 0.5f, S * 3.f, Z), FVector(W - 16.f, 2.f, 10.f), PanelMat, FRotator::ZeroRotator, false);
 	for (float S : { -1.f, 1.f })
 	{
 		KAPVis::Add(this, Hinge, EKAPShape::Cube, FVector(W - 13.f, S * 3.5f, 100.f), FVector(5.f, 2.f, 15.f), Handle, FRotator::ZeroRotator, false);
@@ -171,7 +171,7 @@ void AKAPDoor::Tick(float Dt)
 }
 
 // ---- ғимаратқа есік қосу (вагон, кеңсе) ----
-AKAPDoor* AKAPStructure::AddDoor(FVector LocalHinge, float LocalYaw, float Width, float Height, float OpenYaw, int32 Sound, const FKAPMat& Panel, const FKAPMat& Handle)
+AKAPDoor* AKAPStructure::AddDoor(FVector LocalHinge, float LocalYaw, float Width, float Height, float OpenYaw, int32 Sound, const FKAPMat& PanelMat, const FKAPMat& Handle)
 {
 	UWorld* Wd = GetWorld();
 	if (!Wd) return nullptr;
@@ -180,7 +180,7 @@ AKAPDoor* AKAPStructure::AddDoor(FVector LocalHinge, float LocalYaw, float Width
 	AKAPDoor* D = Wd->SpawnActor<AKAPDoor>(Xf.TransformPosition(LocalHinge), (Xf.GetRotation() * FRotator(0, LocalYaw, 0).Quaternion()).Rotator(), P);
 	if (!D) return nullptr;
 	D->AttachToActor(this, FAttachmentTransformRules::KeepWorldTransform);
-	D->Build(Width, Height, OpenYaw, Sound, Panel, Handle);
+	D->Build(Width, Height, OpenYaw, Sound, PanelMat, Handle);
 	Doors.Add(D);
 	return D;
 }

@@ -18,7 +18,7 @@ public:
 	AKAPDoor();
 	/** Актер = топса (ойықтың төменгі бұрышы), полотно актердің +X осі бойымен жатады, жазықтығы — X/Z.
 	 *  Width/Height — см; OpenYaw — толық ашылу бұрышы; Sound: 0 металл, 1 ағаш */
-	void Build(float Width, float Height, float InOpenYaw, int32 Sound, const FKAPMat& Panel, const FKAPMat& Handle);
+	void Build(float Width, float Height, float InOpenYaw, int32 Sound, const FKAPMat& PanelMat, const FKAPMat& Handle);
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void Tick(float Dt) override;

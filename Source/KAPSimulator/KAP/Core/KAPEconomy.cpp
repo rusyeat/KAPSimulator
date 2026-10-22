@@ -418,7 +418,7 @@ namespace
 		if (C.Board == "army" && !Ss.Flags.Contains("armyPass"))
 		{
 			Ss.Flags.Add("armyPass", 1);
-			GM->Toast(TEXT("Майор Сейітов: «Сенімді адам екенсің». Әскери аймаққа кіру рұқсаты берілді — ішіндегі қоймада қару арзан."), "ok");
+			GM->Toast(TEXT("Майор Құрманов: «Сенімді адам екенсің». Әскери аймаққа кіру рұқсаты берілді — ішіндегі қоймада қару арзан."), "ok");
 		}
 		if (Ss.Tracked == C.Uid)
 		{
@@ -544,7 +544,7 @@ bool AKAPGameMode::EconomySpotUse(AKAPInteractSpot* Sp)
 	}
 	if (A == TEXT("army_board"))
 	{
-		Dialog(TEXT("Әскери аймақ"), TEXT("ӘСКЕРИ АЙМАҚ. Рұқсатсыз кіруге тыйым салынады — күзет ескертусіз оқ атуға құқылы.\nРұқсат алу үшін қақпа жанындағы Майор Сейітовтан жұмыс алып, орындаңыз."), {});
+		Dialog(TEXT("Әскери аймақ"), TEXT("ӘСКЕРИ АЙМАҚ. Рұқсатсыз кіруге тыйым салынады — күзет ескертусіз оқ атуға құқылы.\nРұқсат алу үшін қақпа жанындағы Майор Құрмановтан жұмыс алып, орындаңыз."), {});
 		return true;
 	}
 	return false;
@@ -794,7 +794,7 @@ void AKAPGameMode::SpawnEconomyNPCs()
 	if (bArmyBuilt)
 	{
 		const FVector2D C = ArmyC;
-		if (AKAPNPC* N = Mk(ENPCKind::Soldier, C + FVector2D(-ArmyHalf.X - 6, -4), TEXT("Майор Ерлан Сейітов"), "army")) { N->PatrolR = 1; NamedNPC.Add("army", N); }
+		if (AKAPNPC* N = Mk(ENPCKind::Soldier, C + FVector2D(-ArmyHalf.X - 6, -4), TEXT("Майор Ғабит Құрманов"), "army")) { N->PatrolR = 1; NamedNPC.Add("army", N); }
 		for (float Sg : { -1.f, 1.f }) if (AKAPNPC* N = Mk(ENPCKind::Soldier, C + FVector2D(-ArmyHalf.X + 2, Sg * 6), TEXT("Сарбаз"), "soldier")) N->PatrolR = 2;
 		for (int32 i = 0; i < 8; i++) if (AKAPNPC* N = Mk(ENPCKind::Soldier, C + FVector2D(Rng.FRandRange(-45, 45), Rng.FRandRange(-35, 35)), TEXT("Сарбаз"), "soldier")) N->PatrolR = 30;
 	}

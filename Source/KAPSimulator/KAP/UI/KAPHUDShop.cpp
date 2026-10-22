@@ -64,7 +64,7 @@ void AKAPHUD::DrawShop()
 	Rect(X, Y, W, H, Win); Frame(X, Y, W, H, FLinearColor(Amber.R, Amber.G, Amber.B, 0.35f), 1.5f);
 	Rect(X, Y, W, 74, FLinearColor(0.1f, 0.095f, 0.08f, 1.f)); Rect(X, Y + 74, W, 2, Amber * FLinearColor(1, 1, 1, 0.6f));
 	Txt(X + 28, Y + 14, bArmy ? TEXT("ӘСКЕРИ ҚОЙМА") : TEXT("ҚАРУ-ЖАРАҚ ДҮКЕНІ"), 28, Amber);
-	Txt(X + 30, Y + 50, bArmy ? TEXT("Майор Сейітов · қару мен оқ-дәрі 20% арзан") : TEXT("Сатушы Ерболат · Ақсай ауылы"), 14, Muted);
+	Txt(X + 30, Y + 50, bArmy ? TEXT("Майор Құрманов · қару мен оқ-дәрі 20% арзан") : TEXT("Сатушы Ерболат · Ақсай ауылы"), 14, Muted);
 	Txt(X + W - 28, Y + 14, Money(S.Money), 28, CGreen, 2);
 	Txt(X + W - 28, Y + 50, S.bPermitWeapon ? TEXT("Қару рұқсаты: бар") : TEXT("Қару рұқсаты: жоқ (атыс қаруын сатуға болмайды)"), 14, S.bPermitWeapon ? CGreen : COrange, 2);
 	// санаттар
