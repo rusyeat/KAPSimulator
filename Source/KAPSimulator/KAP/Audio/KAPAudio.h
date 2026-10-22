@@ -93,8 +93,10 @@ public:
 	void SetDread(float L, float Tension);
 	/** Динамикалық музыка: 0 — тыныш фон, 0.3+ — ішекті тремоло, 0.6+ — барабандар */
 	void SetMusic(float Intensity, float Volume);
-	/** Есік: 0 — металл (сықыр + тарс), 1 — ағаш */
+	/** Есік: 0 — металл (сықыр + тарс), 1 — ағаш; толық цикл (ашылу → 0.75 с кейін тарс) */
 	void Door(FVector Loc, int32 Type);
+	/** Есіктің бір кезеңі (AKAPDoor қозғалысымен бірге): 0 — ашылу (тұтқа + сықыр), 1 — жабыла бастау (әлсіз сықыр), 2 — жабылып ілгекке түсу (тарс) */
+	void DoorSfx(FVector Loc, int32 Type, int32 Phase);
 	/** Рация арқылы сөйлеу (2D, жолақ сүзгісі, шытырлақ) */
 	void RadioVoice(float Seconds, bool bFemale = false);
 	/** Сирек домбыра күйі (таң/кеш, тыныш сәттер); ұзақтығын қайтарады */
@@ -133,7 +135,12 @@ public:
 	class USoundAttenuation* Atten();
 	/** Алыс дыбыстар (90 м дейін), LPF-пен */
 	class USoundAttenuation* AttenFar();
+	/** Беткей: 0 құм, 1 металл, 2 ағаш, 3 бетон/тас, 4 қиыршық/топырақ жол, 5 асфальт */
 	void Footstep(FVector Loc, int32 Surface, float Vol = 0.6f, bool bRun = false);
+	/** Аяқ астындағы компоненттің беткейі (тег бойынша; ландшафт — құм, тегі жоқ зат — тас, көлік — металл) */
+	static int32 SurfaceOf(const UPrimitiveComponent* C);
+	/** From нүктесінен төмен сәуле (NPC қадамы үшін) */
+	static int32 SurfaceBelow(UWorld* W, const FVector& From, const AActor* Ignore);
 	/** Секіріп/құлап жерге түсу (Strength 0..1) */
 	void Land(FVector Loc, int32 Surface, float Strength);
 	/** Дизель генераторының гулі (тұйық цикл, 3D) — нүктеге тіркеледі */
@@ -186,6 +193,8 @@ private:
 	USoundWave* LoadVo(const FString& Text, bool bFemale) const;
 	UAudioComponent* PlayVoWave(USoundWave* W, FVector Loc, int32 Mode, float Vol, float Pitch, bool bFirst);
 	void ChainStep(int32 Id, int32 I, FVector Loc, int32 Mode, float Vol);
+	/** Синтез есік дыбысы (жазба жоқ болса): сықыр және/немесе тарс */
+	void DoorSynth(FVector Loc, int32 Type, bool bCreak, bool bSlam);
 	UPROPERTY() TArray<TObjectPtr<USoundWave>> ChainWaves;
 	int32 ChainId = 0;
 	float EngOn = 0.f, EngRpm = 0.f, EngMis = 0.f, EngLoV = 0.f, EngHiV = 0.f, MusI = 0.f, MusV = 0.f, MusCalmV = 0.f, MusDangerV = 0.f;

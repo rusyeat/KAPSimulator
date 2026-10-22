@@ -48,8 +48,13 @@ public:
 	/** Апат радиусы (м): осы қашықтықтағы ұңғымада ақау болса — маяк пен сирена */
 	float AlarmRadiusM = 400.f;
 	bool bAlarm = false;
+	/** Ашылатын есіктер (KAPDoor.cpp) */
+	TArray<TWeakObjectPtr<class AKAPDoor>> Doors;
+	virtual void Destroyed() override;
 private:
 	friend class AKAPWorldBuilder;
+	/** LocalHinge — топса (ойықтың төменгі бұрышы, жергілікті см), полотно жергілікті LocalYaw бағытында */
+	class AKAPDoor* AddDoor(FVector LocalHinge, float LocalYaw, float Width, float Height, float OpenYaw, int32 Sound, const struct FKAPMat& Panel, const struct FKAPMat& Handle);
 	void BuildWorkshop(FRandomStream& R, bool bBig);
 	void AddFlickLamp(FVector Pos, float Cd, bool bBad, bool bShadow, FLinearColor Col);
 	void AddAlarm(FVector Pos, float Yaw);

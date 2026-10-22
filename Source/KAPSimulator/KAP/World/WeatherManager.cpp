@@ -225,9 +225,9 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	P.bOverride_WhiteTemp = true;
 	P.WhiteTemp = 6500.f - Env.Heat * 600.f + (1 - Day) * 1200.f;
 	// экспозиция (EV100): күндіз кең, түнде −1.5…1 — фара мен прожектор басым жарық, бірақ ай жарығында пішіндер көрінеді
-	P.bOverride_AutoExposureBias = true; P.AutoExposureBias = -0.3f * Night - 0.35f * Indoor;
-	// ішке кіргенде көз «ашылмайды»: шамдар жарық дақ, бұрыштар қараңғы (күндіз EV 5-тен төмен түспейді)
-	P.AutoExposureMinBrightness = FMath::Lerp(FMath::Lerp(0.5f, 4.5f, Indoor), FMath::Lerp(-1.5f, -0.8f, Indoor), Night);
+	P.bOverride_AutoExposureBias = true; P.AutoExposureBias = -0.3f * Night - 0.1f * Indoor;
+	// ішке кіргенде көз біртіндеп үйренеді (бұрын күндіз EV 4.5-тен төмен түспейтін — шам жанып тұрса да іші қап-қараңғы еді)
+	P.AutoExposureMinBrightness = FMath::Lerp(FMath::Lerp(0.5f, 1.f, Indoor), FMath::Lerp(-1.5f, -0.8f, Indoor), Night);
 	// түнде экспозиция ең жарық бөлікке қарай өлшенеді: фонарь/фара түскен жер ағарып кетпейді, айнала — қараңғы
 	P.AutoExposureMaxBrightness = FMath::Lerp(12.f, 6.f, Night);
 	P.bOverride_AutoExposureLowPercent = true; P.AutoExposureLowPercent = FMath::Lerp(10.f, 62.f, Night);

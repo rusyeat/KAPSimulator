@@ -173,9 +173,18 @@ void AKAPStructure::BuildWorkshop(FRandomStream& R, bool bBig)
 		for (float Y : { -D * 0.18f, D * 0.2f })
 		{
 			const bool bBad = (n == 2) || R.FRand() < 0.12f;
-			AddFlickLamp(FVector(X, Y, H - 140), 900.f, bBad, n < 2, FLinearColor(1.f, 0.86f, 0.62f));
+			AddFlickLamp(FVector(X, Y, H - 140), 1500.f, bBad, n < 2, FLinearColor(1.f, 0.86f, 0.62f));
 			n++;
 		}
+	// жұмсақ толтыру жарығы (көлеңкесіз): шам дақтарының арасы, бұрыштар мүлде қараңғы болмасын
+	for (float X : { -L * 0.25f, L * 0.25f })
+	{
+		UPointLightComponent* Fl = NewObject<UPointLightComponent>(this);
+		Fl->SetupAttachment(RootComponent); Fl->SetRelativeLocation(FVector(X, 0, H - 220));
+		Fl->SetIntensityUnits(ELightUnits::Candelas); Fl->SetIntensity(90.f); Fl->SetAttenuationRadius(1500.f);
+		Fl->SetLightColor(FLinearColor(1.f, 0.88f, 0.7f)); Fl->SetCastShadows(false); Fl->SetVolumetricScatteringIntensity(0.f);
+		Fl->RegisterComponent();
+	}
 	// апат маягы: қақпаның үстінде және ішкі қабырғада
 	AddAlarm(FVector(Door / 2 + 80, D / 2 + 30, DoorH + 60), 90.f);
 	// кіре берістегі сыртқы прожектор

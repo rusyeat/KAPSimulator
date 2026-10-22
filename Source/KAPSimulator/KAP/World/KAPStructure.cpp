@@ -77,8 +77,10 @@ void AKAPStructure::Build(EStructType InType, FVector S, FLinearColor Color, int
 		Box(FVector(240, -D / 2 - 4, 210), FVector(112, 4, 82), Frame, FRotator::ZeroRotator, false);
 		Box(FVector(-L / 2 - 25, 60, 250), FVector(40, 80, 55), FKAPMat::Paint(FLinearColor(0.78f, 0.77f, 0.72f), 0.6f));
 		for (int32 i = 0; i < 6; i++) Box(FVector(-L / 2 - 46, 60, 232 + i * 7), FVector(2, 70, 3), Dark, FRotator::ZeroRotator, false);
-		Box(FVector(56, D / 2 + 58, 165), FVector(4, 110, 230), FKAPMat::Sheet(FLinearColor(0.3f, 0.32f, 0.3f), 0.5f), FRotator(0, -8, 0), false); // ашық есік
-		Box(FVector(60, D / 2 + 104, 160), FVector(6, 6, 18), Steel, FRotator::ZeroRotator, false);
+		// есік: ойық x 60…180, еденнен (z 60) 220 см; жақтау + топсалы металл есік (E — ашу/жабу)
+		for (float X : { 57.f, 183.f }) Box(FVector(X, D / 2, 171), FVector(6, 16, 222), Frame, FRotator::ZeroRotator, false);
+		Box(FVector(120, D / 2, 283), FVector(132, 16, 6), Frame, FRotator::ZeroRotator, false);
+		AddDoor(FVector(61, D / 2, 61), 0.f, 118.f, 218.f, 100.f, 0, FKAPMat::Sheet(FLinearColor(0.3f, 0.32f, 0.3f), 0.5f, 0.f), Steel);
 		Box(FVector(300, -80, H + 140), FVector(5, 5, 160), Steel, FRotator::ZeroRotator, false);
 		Box(FVector(300, -80, H + 200), FVector(60, 4, 4), Steel, FRotator::ZeroRotator, false);
 		{
@@ -107,13 +109,34 @@ void AKAPStructure::Build(EStructType InType, FVector S, FLinearColor Color, int
 		Light->SetupAttachment(RootComponent); Light->SetRelativeLocation(FVector(120, D / 2 + 70, H + 10));
 		Light->SetIntensity(bBright ? 25000 : 8000); Light->SetAttenuationRadius(bBright ? 6000 : 2200); Light->SetLightColor(FLinearColor(1, 0.78f, 0.45f));
 		Light->RegisterComponent();
-		UPointLightComponent* In = NewObject<UPointLightComponent>(this);
-		In->SetupAttachment(RootComponent); In->SetRelativeLocation(FVector(0, 0, H + 20)); In->SetIntensity(3000); In->SetAttenuationRadius(700); In->SetLightColor(FLinearColor(1, 0.85f, 0.6f)); In->RegisterComponent();
+		// ішкі жарық: төбеде екі шам (60 Вт шамамен, ~45 кд), бұрын біреу ғана әрі ~5 кд еді — іші қап-қараңғы болатын
+		for (int32 k = 0; k < 2; k++)
 		{
-			// төбе шамы (кейбір вагондарда ақаулы — жыпылықтайды) және ішкі заттар: сөре, радио, орындық, қағаздар, күнтізбе
-			UStaticMeshComponent* Bulb = KAPVis::Add(this, RootComponent, EKAPShape::Sphere, FVector(0, 0, H + 40), FVector(14, 14, 14), FKAPMat::Glow(FLinearColor(1, 0.85f, 0.6f), 0), FRotator::ZeroRotator, false);
+			const float Lx = k == 0 ? -200.f : 200.f;
+			UPointLightComponent* In = NewObject<UPointLightComponent>(this);
+			In->SetupAttachment(RootComponent); In->SetRelativeLocation(FVector(Lx, 0, H + 22));
+			In->SetIntensityUnits(ELightUnits::Candelas); In->SetIntensity(45.f); In->SetAttenuationRadius(900); In->SetSourceRadius(4.f);
+			In->SetLightColor(FLinearColor(1, 0.85f, 0.6f)); In->SetCastShadows(k == 0); In->RegisterComponent();
+			KAPVis::Add(this, RootComponent, EKAPShape::Cylinder, FVector(Lx, 0, H + 50), FVector(2, 2, 16), Steel, FRotator::ZeroRotator, false);
+			KAPVis::Add(this, RootComponent, EKAPShape::Cone, FVector(Lx, 0, H + 38), FVector(30, 30, 12), FKAPMat::Paint(FLinearColor(0.75f, 0.74f, 0.7f), 0.5f), FRotator::ZeroRotator, false);
+			UStaticMeshComponent* Bulb = KAPVis::Add(this, RootComponent, EKAPShape::Sphere, FVector(Lx, 0, H + 28), FVector(12, 12, 12), FKAPMat::Glow(FLinearColor(1, 0.85f, 0.6f), 0), FRotator::ZeroRotator, false);
 			Bulb->SetCastShadow(false);
-			FFlick F; F.L = In; F.Bulb = Bulb; F.Base = 3000; F.bBad = R.FRand() < 0.4f; F.Col = FLinearColor(1, 0.85f, 0.6f); F.Next = R.FRandRange(1.f, 5.f); Flicks.Add(F);
+			// кейбір бос вагондарда бір шам ақаулы (жыпылықтайды); баспанада (wagon0) — жоқ
+			FFlick F; F.L = In; F.Bulb = Bulb; F.Base = 45.f; F.bBad = !bBright && k == 1 && R.FRand() < 0.5f; F.Col = FLinearColor(1, 0.85f, 0.6f); F.Next = R.FRandRange(1.f, 5.f); Flicks.Add(F);
+		}
+		if (bBright)
+		{
+			// баспанадағы үстел шамы: жылы, жұмсақ дақ
+			KAPVis::Add(this, RootComponent, EKAPShape::Cylinder, FVector(-310, -110, 146), FVector(12, 12, 4), Steel, FRotator::ZeroRotator, false);
+			KAPVis::Add(this, RootComponent, EKAPShape::Cylinder, FVector(-310, -110, 168), FVector(2, 2, 40), Steel, FRotator::ZeroRotator, false);
+			KAPVis::Add(this, RootComponent, EKAPShape::Cone, FVector(-310, -110, 192), FVector(22, 22, 16), FKAPMat::Paint(FLinearColor(0.12f, 0.3f, 0.18f), 0.5f), FRotator::ZeroRotator, false);
+			UPointLightComponent* Tl = NewObject<UPointLightComponent>(this);
+			Tl->SetupAttachment(RootComponent); Tl->SetRelativeLocation(FVector(-310, -110, 180));
+			Tl->SetIntensityUnits(ELightUnits::Candelas); Tl->SetIntensity(12.f); Tl->SetAttenuationRadius(420); Tl->SetSourceRadius(3.f);
+			Tl->SetLightColor(FLinearColor(1, 0.72f, 0.42f)); Tl->SetCastShadows(false); Tl->RegisterComponent();
+		}
+		{
+			// ішкі заттар: сөре, радио, орындық, қағаздар, күнтізбе
 			for (int32 z = 0; z < 3; z++) Box(FVector(-L / 2 + 30, 40, 120 + z * 50), FVector(40, 160, 4), Wood, FRotator::ZeroRotator, false);
 			Box(FVector(-L / 2 + 30, 10, 182), FVector(26, 36, 20), FKAPMat::Paint(FLinearColor(0.15f, 0.14f, 0.1f), 0.6f), FRotator::ZeroRotator, false);
 			KAPVis::Add(this, RootComponent, EKAPShape::Sphere, FVector(-L / 2 + 44, 0, 186), FVector(3, 3, 3), FKAPMat::Glow(FLinearColor(1.f, 0.4f, 0.05f), 30), FRotator::ZeroRotator, false);
@@ -326,11 +349,38 @@ void AKAPStructure::Build(EStructType InType, FVector S, FLinearColor Color, int
 	}
 	case EStructType::HQOffice:
 	{
-		// ашық алдыңғы жағы бар кеңсе (10×8 м)
+		// кеңсе (10×8 м): алдыңғы (+Y) қабырғада есік (ортасында, 1.2 м) пен екі терезе, төбеде күндізгі жарық шамдары
 		const FKAPMat M = FKAPMat::Concrete(FLinearColor(0.62f, 0.62f, 0.6f));
 		Box(FVector(0, -400, 160), FVector(1000, 30, 320), M);
 		Box(FVector(-500, 0, 160), FVector(30, 800, 320), M);
 		Box(FVector(500, 0, 160), FVector(30, 800, 320), M);
+		for (float Sx : { -1.f, 1.f })
+		{
+			Box(FVector(Sx * 287.5f, 400, 160), FVector(455, 30, 320), M);
+			Box(FVector(Sx * 280.f, 416, 175), FVector(164, 4, 114), Frame, FRotator::ZeroRotator, false);
+			Box(FVector(Sx * 280.f, 417, 175), FVector(150, 4, 100), Glass, FRotator::ZeroRotator, false);
+			Box(FVector(Sx * 280.f, 424, 116), FVector(176, 16, 5), Frame, FRotator::ZeroRotator, false);
+		}
+		Box(FVector(0, 400, 272), FVector(120, 30, 96), M);
+		for (float X : { -63.f, 63.f }) Box(FVector(X, 400, 112), FVector(6, 36, 226), Frame, FRotator::ZeroRotator, false);
+		Box(FVector(0, 400, 226), FVector(132, 36, 6), Frame, FRotator::ZeroRotator, false);
+		// еден: ағаш тақтай (бұрын ішінде құм еді), есік едеңнің деңгейінде
+		{ FKAPMat Fl = Wood; Fl.Color = FLinearColor(0.3f, 0.2f, 0.12f); Fl.PanelW = 18.f; Fl.Grime = 0.45f; Fl.DustTop = 0.12f; Box(FVector(0, 0, 4), FVector(970, 830, 10), Fl); }
+		AddDoor(FVector(-59, 400, 10), 0.f, 118.f, 212.f, 100.f, 1, Wood, Steel);
+		Box(FVector(0, 470, 5), FVector(180, 100, 10), FKAPMat::Concrete(), FRotator::ZeroRotator, false);
+		for (int32 k = 0; k < 3; k++)
+		{
+			// күндізгі жарық шамы: түтік (капсула жарық көзі) + ақ қалпақ; біреуі кейде жыпылықтайды
+			const FVector Lp(k == 1 ? 0.f : (k == 0 ? -260.f : 260.f), k == 1 ? 180.f : -160.f, 300.f);
+			Box(Lp + FVector(0, 0, 8), FVector(140, 26, 6), FKAPMat::Paint(FLinearColor(0.8f, 0.8f, 0.78f), 0.5f), FRotator::ZeroRotator, false);
+			UStaticMeshComponent* Tube = Box(Lp, FVector(124, 8, 6), FKAPMat::Glow(FLinearColor(0.92f, 0.97f, 1.f), 0), FRotator::ZeroRotator, false);
+			Tube->SetCastShadow(false);
+			UPointLightComponent* Lt = NewObject<UPointLightComponent>(this);
+			Lt->SetupAttachment(RootComponent); Lt->SetRelativeLocation(Lp - FVector(0, 0, 6)); Lt->SetRelativeRotation(FRotator(90, 0, 0)); // түтік жарықтың жергілікті Z осі бойымен → X-ке бұрамыз
+			Lt->SetIntensityUnits(ELightUnits::Candelas); Lt->SetIntensity(70.f); Lt->SetAttenuationRadius(1100); Lt->SetSourceRadius(3.f); Lt->SetSourceLength(110.f);
+			Lt->SetLightColor(FLinearColor(0.92f, 0.97f, 1.f)); Lt->SetCastShadows(k != 1); Lt->RegisterComponent();
+			FFlick F; F.L = Lt; F.Bulb = Tube; F.Base = 70.f; F.bBad = k == 2 && R.FRand() < 0.5f; F.Col = FLinearColor(0.92f, 0.97f, 1.f); F.Next = R.FRandRange(1.f, 5.f); Flicks.Add(F);
+		}
 		Box(FVector(0, 0, 330), FVector(1060, 860, 25), FKAPMat::Paint(FLinearColor(0.35f, 0.35f, 0.35f)));
 		Box(FVector(-200, -250, 45), FVector(240, 100, 90), Wood);
 		Box(FVector(300, -320, 60), FVector(140, 80, 120), FKAPMat::Paint(FLinearColor(0.12f, 0.16f, 0.2f)));

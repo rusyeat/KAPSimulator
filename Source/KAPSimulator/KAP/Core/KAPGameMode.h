@@ -87,8 +87,8 @@ public:
 	void SpawnReinforcement(AKAPNPC* Caller);
 	float Provoked = 0.f;
 	float IndoorAu = 0.f, StingerCd = 0.f, DirRest = 0.f, FearSm = 0.f, StalkerCd = 60.f;
-	bool bWasDanger = false, bWasIndoor = false;
-	float DoorCd = 0.f, LurkK = 0.f, DombraCd = 20.f;
+	bool bWasDanger = false;
+	float LurkK = 0.f, DombraCd = 20.f;
 	void OnPlayerDied();
 	void RespawnPlayer();
 	bool bPlayerDead = false;

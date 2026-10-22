@@ -1008,7 +1008,18 @@ void AKAPNPC::SoundTick(float Dt, float DistP)
 	{
 		StepAcc += V * Dt;
 		const float Stride = Kind == ENPCKind::Wolf ? 45.f : 75.f;
-		if (StepAcc > Stride) { StepAcc = 0; A->Footstep(GetActorLocation() - FVector(0, 0, 80), Kind == ENPCKind::Wolf ? 4 : 0, Kind == ENPCKind::Wolf ? 0.3f : 0.45f); }
+		if (StepAcc > Stride)
+		{
+			StepAcc = 0;
+			// беткей аяқ астынан (асфальт, вагон едені, т.б.); ландшафт болса — жол жиегінде қиыршық, әйтпесе құм
+			int32 Surf = 4;
+			if (Kind != ENPCKind::Wolf)
+			{
+				Surf = UKAPAudio::SurfaceBelow(GetWorld(), GetActorLocation(), this);
+				if (Surf == 0) if (const AKAPGameMode* GM = AKAPGameMode::Get(this)) if (GM->DistToRoad(FVector2D(GetActorLocation()) / 100.0) < 3.5) Surf = 4;
+			}
+			A->Footstep(GetActorLocation() - FVector(0, 0, 80), Surf, Kind == ENPCKind::Wolf ? 0.3f : 0.45f);
+		}
 	}
 }
 

@@ -201,11 +201,7 @@ void AKAPAtmosphere::UpdateTracks(float Dt)
 		if (bAir) AirVz = FMath::Min(AirVz, (float)P->GetVelocity().Z);
 		else if (bWasAir && P->GetCharacterMovement()->IsMovingOnGround() && AirVz < -250.f)
 		{
-			const AActor* Floor = P->GetCharacterMovement()->CurrentFloor.HitResult.GetActor();
-			const bool bSand = !Floor || Floor->GetClass()->GetName().Contains(TEXT("Landscape"));
-			int32 Surf = bSand ? 0 : 1;
-			if (const UPrimitiveComponent* FC = P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent())
-				Surf = FC->ComponentHasTag("SurfMetal") ? 1 : FC->ComponentHasTag("SurfWood") ? 2 : FC->ComponentHasTag("SurfConcrete") ? 3 : Surf;
+			const int32 Surf = UKAPAudio::SurfaceOf(P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent());
 			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Land(P->GetActorLocation() - FVector(0, 0, 88), Surf, FMath::Clamp((-AirVz - 250.f) / 900.f, 0.f, 1.f));
 		}
 		if (!bAir) AirVz = 0.f;
@@ -221,12 +217,10 @@ void AKAPAtmosphere::UpdateTracks(float Dt)
 			bLeftFoot = !bLeftFoot;
 			const float Yaw = P->GetVelocity().Rotation().Yaw;
 			const FVector Side = FRotator(0, Yaw + 90, 0).Vector() * (bLeftFoot ? -13.f : 13.f);
-			const AActor* Floor = P->GetCharacterMovement()->CurrentFloor.HitResult.GetActor();
-			const bool bSand = !Floor || Floor->GetClass()->GetName().Contains(TEXT("Landscape"));
-			int32 Surf = bSand ? 0 : 1;
-			if (const UPrimitiveComponent* FC = P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent())
-				Surf = FC->ComponentHasTag("SurfMetal") ? 1 : FC->ComponentHasTag("SurfWood") ? 2 : FC->ComponentHasTag("SurfConcrete") ? 3 : Surf;
-			if (bSand && GM && GM->DistToRoad(FVector2D(Pos) / 100.0) < 3.5) Surf = 4; // қиыршық тасты жол
+			// беткей: асфальт жолдың өз тегі бар (SurfAsphalt) — бұрын ол «металл» деп танылып, қадамның орнына сыңғыр шығатын
+			int32 Surf = UKAPAudio::SurfaceOf(P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent());
+			const bool bSand = Surf == 0;
+			if (bSand && GM && GM->DistToRoad(FVector2D(Pos) / 100.0) < 3.5) Surf = 4; // топырақ жол (қабатының соқтығысы жоқ, астында ландшафт)
 			{ static uint32 Seen = 0; if (!(Seen & (1u << Surf))) { Seen |= 1u << Surf; UE_LOG(LogTemp, Display, TEXT("KAPTEST step surface=%d"), Surf); } }
 			if (bSand) StampTrack(FVector(Pos.X, Pos.Y, KAPVis::GroundZ(GetWorld(), Pos.X, Pos.Y, Pos.Z)) + Side, Yaw, FVector(30, 7, 15), false);
 			const bool bRun = P->GetVelocity().Size2D() > 500;

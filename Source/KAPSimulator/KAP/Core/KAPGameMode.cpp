@@ -17,6 +17,7 @@
 #include "KAP/World/WeatherManager.h"
 #include "KAP/World/KAPWorldBuilder.h"
 #include "KAP/World/KAPStructure.h"
+#include "KAP/World/KAPDoor.h"
 #include "KAP/World/KAPVehicleHandle.h"
 #include "KAP/World/KAPFXManager.h"
 #include "KAP/World/KAPVisuals.h"
@@ -393,6 +394,145 @@ void AKAPGameMode::BeginPlay()
 			{ 24.f, [this, LogN, Shot, Row, Aim]() { LogN(TEXT("car+4")); if (Row->Num() > 1 && (*Row)[1].IsValid()) Aim((*Row)[1]->GetMesh()->GetBoneLocation("pelvis")); for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "niva") V->bAutoPilot = false; } },
 			{ 24.5f, [Shot]() { Shot(TEXT("06_car_after")); } },
 			{ 26.f, []() { FGenericPlatformMisc::RequestExit(false); } },
+		};
+		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kapdoortest")))
+	{
+		// Есіктер мен ішкі жарық: вагон есігі (сырттан ашу → ішке кіру → жабу), құбыжық жабық есікті ұрады,
+		// ауыл адамы есікті өзі ашып өтеді, кеңсе, цех, түн, асфальттағы қадам беткейі
+		auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPD_") + N + TEXT(".png"), true, false); };
+		auto Wagon = [this]() -> AKAPStructure* { if (!Builder) return nullptr; const TWeakObjectPtr<AKAPStructure>* S = Builder->Places.Find("wagon0"); return S ? S->Get() : nullptr; };
+		auto DoorOf = [](AKAPStructure* S) -> AKAPDoor* { return S && S->Doors.Num() ? S->Doors[0].Get() : nullptr; };
+		auto Hq = [this]() -> AKAPStructure* { return Builder ? Builder->HQOffice.Get() : nullptr; };
+		auto Put = [this](FVector At, FVector LookAt)
+		{
+			AKAPCharacter* P = Player(); APlayerController* PC = GetWorld()->GetFirstPlayerController(); if (!P || !PC) return;
+			P->SetActorLocation(At, false, nullptr, ETeleportType::TeleportPhysics);
+			P->GetCharacterMovement()->StopMovementImmediately();
+			PC->SetControlRotation((LookAt - (At + FVector(0, 0, 65))).Rotation());
+		};
+		auto Ground = [this](FVector P, float Up) { return FVector(P.X, P.Y, KAPVis::GroundZ(GetWorld(), P.X, P.Y, P.Z + 300.f) + Up); };
+		auto LogD = [](const TCHAR* Tag, AKAPDoor* D)
+		{
+			if (D) { UE_LOG(LogTemp, Display, TEXT("KAPDOOR %s open=%d amount=%.2f yaw=%.0f knocks=%d"), Tag, D->IsOpen() ? 1 : 0, D->OpenAmount(), D->Hinge->GetRelativeRotation().Yaw, D->Knocks); }
+			else { UE_LOG(LogTemp, Display, TEXT("KAPDOOR %s NO DOOR"), Tag); }
+		};
+		auto LogI = [this](const TCHAR* Tag) { if (AKAPCharacter* P = Player()) UE_LOG(LogTemp, Display, TEXT("KAPDOOR %s interact='%s' target=%s indoor=%d"), Tag, *P->InteractText, *GetNameSafe(P->InteractTarget.Get()), P->bIndoor ? 1 : 0); };
+		// ішкі нүкте (вагон едені z=60) және сыртқы нүкте (есік алды)
+		auto Inside = [](AKAPStructure* S, FVector Local) { return S->GetActorTransform().TransformPosition(Local + FVector(0, 0, 60 + 95)); };
+		auto Drive = [this](TWeakObjectPtr<APawn> Who, FVector Dir, float Secs)
+		{
+			TSharedRef<FTimerHandle> H = MakeShared<FTimerHandle>(); TSharedRef<float> Left = MakeShared<float>(Secs);
+			GetWorldTimerManager().SetTimer(*H, FTimerDelegate::CreateLambda([this, Who, Dir, H, Left]()
+			{
+				*Left -= 0.03f;
+				if (!Who.IsValid() || *Left <= 0.f) { GetWorldTimerManager().ClearTimer(*H); return; }
+				Who->AddMovementInput(Dir, 1.f, true);
+			}), 0.03f, true);
+		};
+		TSharedRef<TWeakObjectPtr<AKAPNPC>> Npc = MakeShared<TWeakObjectPtr<AKAPNPC>>();
+		const FVector2D Ja(-820, 760), Jb(-620, 720);
+		struct FStep { float T; TFunction<void()> F; };
+		TArray<FStep> St = {
+			{ 3.f, [this]() { MenuNewGame(); } },
+			{ 10.f, [this]() { if (Cine.IsSet()) SkipCinematic(); } },
+			{ 12.f, [this]() { Weather->bOverride = true; Weather->OverrideType = EWeatherType::Clear; Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 34.5; } },
+			// 1) вагон: есік алдында, жабық
+			{ 13.f, [Wagon, DoorOf, Put, Ground, LogD]() { AKAPDoor* D = DoorOf(Wagon()); LogD(TEXT("start"), D); if (D) Put(Ground(D->Mid() + D->GetActorRightVector() * 170.f, 95.f), D->Mid()); } },
+			{ 15.f, [Shot, LogI]() { LogI(TEXT("outside")); Shot(TEXT("01_wagon_closed")); } },
+			{ 15.5f, [this]() { if (AKAPCharacter* P = Player()) P->Interact(); } },
+			{ 15.9f, [Wagon, DoorOf, LogD]() { LogD(TEXT("opening+0.4"), DoorOf(Wagon())); } },
+			{ 16.8f, [Wagon, DoorOf, LogD, Shot]() { LogD(TEXT("opened"), DoorOf(Wagon())); Shot(TEXT("02_wagon_open")); } },
+			// 2) ішке кіріп, есікке қарап жабады
+			{ 17.5f, [Wagon, DoorOf, Put, Inside]() { AKAPStructure* S = Wagon(); AKAPDoor* D = DoorOf(S); if (S && D) Put(Inside(S, FVector(120, -30, 0)), D->Mid()); } },
+			{ 20.5f, [Shot, LogI]() { LogI(TEXT("inside")); Shot(TEXT("03_wagon_inside_open")); } },
+			// алғаш кіргенде сценарий камераны үстелге бұрады — есікке қайта қараймыз
+			{ 20.8f, [Wagon, DoorOf, Put, Inside]() { AKAPStructure* S = Wagon(); AKAPDoor* D = DoorOf(S); if (S && D) Put(Inside(S, FVector(120, -30, 0)), D->Mid()); } },
+			{ 21.f, [this, LogI]() { LogI(TEXT("inside_aim")); if (AKAPCharacter* P = Player()) P->Interact(); } },
+			{ 22.f, [Wagon, DoorOf, LogD, LogI]() { LogD(TEXT("closed"), DoorOf(Wagon())); LogI(TEXT("after_close")); } },
+			{ 24.5f, [Shot]() { Shot(TEXT("04_wagon_inside_closed")); } },
+			{ 25.f, [Wagon, Put, Inside]() { if (AKAPStructure* S = Wagon()) Put(Inside(S, FVector(150, 20, 0)), S->GetActorTransform().TransformPosition(FVector(-380, -60, 130))); } },
+			{ 27.5f, [Shot]() { Shot(TEXT("05_wagon_interior")); } },
+			// 3) құбыжық жабық есіктің сыртында — ұрады
+			{ 28.f, [this, Wagon, DoorOf, Ground, Npc]()
+			{
+				AKAPDoor* D = DoorOf(Wagon()); if (!D) return;
+				const FVector At = Ground(D->Mid() + D->GetActorRightVector() * 110.f, 92.f);
+				if (AKAPNPC* N = SpawnNPC((int32)ENPCKind::Irradiated, KAP::CM2M(At), TEXT("Тест құбыжық"), true))
+				{
+					N->SetActorTickEnabled(false); N->GetCharacterMovement()->DisableMovement(); N->SetActorLocation(At);
+					*Npc = N;
+				}
+			} },
+			{ 33.f, [Wagon, DoorOf, LogD, Npc]() { LogD(TEXT("monster"), DoorOf(Wagon())); if (Npc->IsValid()) (*Npc)->Destroy(); } },
+			// 4) ауыл адамы сырттан келіп, есікті өзі ашып кіреді; ішке кірген соң есік жабылады
+			{ 34.f, [this, Wagon, DoorOf, Ground, Npc, Put, Inside, Drive]()
+			{
+				AKAPStructure* S = Wagon(); AKAPDoor* D = DoorOf(S); if (!S || !D) return;
+				Put(Inside(S, FVector(-250, -20, 0)), D->Mid());
+				const FVector At = Ground(D->Mid() + D->GetActorRightVector() * 420.f, 92.f);
+				if (AKAPNPC* N = SpawnNPC((int32)ENPCKind::Villager, KAP::CM2M(At), TEXT("Тест адам"), true))
+				{
+					// AI өшірулі: адамды 1.4 м/с жылдамдықпен есікке қарай «жүргіземіз» (соқтығыспен — есік жабық болса, тоқтайды)
+					N->SetActorTickEnabled(false); N->GetCharacterMovement()->DisableMovement(); N->SetActorLocation(At);
+					*Npc = N;
+					UE_LOG(LogTemp, Display, TEXT("KAPDOOR villager start, door mid=%s"), *D->Mid().ToString());
+					const FVector Dv = -D->GetActorRightVector();
+					TSharedRef<FTimerHandle> H = MakeShared<FTimerHandle>(); TSharedRef<float> Left = MakeShared<float>(6.f);
+					TWeakObjectPtr<AKAPNPC> Wn(N);
+					const FVector Mid = D->Mid();
+					GetWorldTimerManager().SetTimer(*H, FTimerDelegate::CreateLambda([this, Wn, Dv, H, Left, Mid]()
+					{
+						*Left -= 0.03f;
+						// есіктен 1.2 м қалғанда тоқтайды (баспалдақ алдында)
+						if (!Wn.IsValid() || *Left <= 0.f || FVector::Dist2D(Wn->GetActorLocation(), Mid) < 120.f) { if (Wn.IsValid()) Wn->GetCharacterMovement()->Velocity = FVector::ZeroVector; GetWorldTimerManager().ClearTimer(*H); return; }
+						const FVector Nx = Wn->GetActorLocation() + Dv * 140.f * 0.03f;
+						Wn->SetActorLocation(FVector(Nx.X, Nx.Y, KAPVis::GroundZ(GetWorld(), Nx.X, Nx.Y, Nx.Z) + 96.f));
+						Wn->GetCharacterMovement()->Velocity = Dv * 140.f;
+					}), 0.03f, true);
+				}
+			} },
+			{ 35.5f, [Wagon, DoorOf, LogD, Npc]() { LogD(TEXT("villager+1.5"), DoorOf(Wagon())); if (Npc->IsValid()) UE_LOG(LogTemp, Display, TEXT("KAPDOOR villager at %s v=%.0f"), *(*Npc)->GetActorLocation().ToString(), (*Npc)->GetVelocity().Size2D()); } },
+			{ 37.f, [Wagon, DoorOf, LogD, Npc, Shot]() { LogD(TEXT("villager+3"), DoorOf(Wagon())); if (Npc->IsValid()) UE_LOG(LogTemp, Display, TEXT("KAPDOOR villager at %s v=%.0f"), *(*Npc)->GetActorLocation().ToString(), (*Npc)->GetVelocity().Size2D()); Shot(TEXT("06_villager_enters")); } },
+			{ 39.5f, [Wagon, DoorOf, LogD, Npc]() { LogD(TEXT("villager+5.5"), DoorOf(Wagon())); if (Npc->IsValid()) UE_LOG(LogTemp, Display, TEXT("KAPDOOR villager at %s v=%.0f indoor=%d"), *(*Npc)->GetActorLocation().ToString(), (*Npc)->GetVelocity().Size2D(), AKAPStructure::IsIndoor((*Npc)->GetWorld(), (*Npc)->GetActorLocation()) ? 1 : 0); } },
+			{ 42.f, [Wagon, DoorOf, LogD, Npc]() { LogD(TEXT("villager+8"), DoorOf(Wagon())); if (Npc->IsValid()) (*Npc)->Destroy(); } },
+			// 5) кеңсе: сыртта жабық → ашып кіру → ішінде
+			{ 43.f, [Hq, DoorOf, Put, Ground, LogD]() { AKAPDoor* D = DoorOf(Hq()); LogD(TEXT("hq"), D); if (D) Put(Ground(D->Mid() + D->GetActorRightVector() * 400.f, 95.f), D->Mid()); } },
+			{ 45.f, [Shot]() { Shot(TEXT("07_hq_outside")); } },
+			{ 45.5f, [Hq, DoorOf, Put, Ground]() { if (AKAPDoor* D = DoorOf(Hq())) Put(Ground(D->Mid() + D->GetActorRightVector() * 150.f, 95.f), D->Mid()); } },
+			{ 46.f, [this, LogI]() { LogI(TEXT("hq_front")); if (AKAPCharacter* P = Player()) P->Interact(); } },
+			{ 47.2f, [Hq, DoorOf, LogD]() { LogD(TEXT("hq_opened"), DoorOf(Hq())); } },
+			{ 47.5f, [Hq, Put, Ground]() { if (AKAPStructure* S = Hq()) Put(Ground(S->GetActorTransform().TransformPosition(FVector(150, 250, 0)), 95.f), S->GetActorTransform().TransformPosition(FVector(-200, -300, 100))); } },
+			{ 51.f, [Shot, LogI]() { LogI(TEXT("hq_inside")); Shot(TEXT("08_hq_inside")); } },
+			// 6) цех
+			{ 52.f, [this, Put]()
+			{
+				for (KAPReg::TIter<AKAPStructure> It(GetWorld(), KAPReg::Structures()); It; ++It) if (It->Type == EStructType::Workshop)
+				{
+					const FTransform Xf = It->GetActorTransform();
+					Put(Xf.TransformPosition(FVector(-200, 350, 12 + 95)), Xf.TransformPosition(FVector(200, -500, 250)));
+					break;
+				}
+			} },
+			{ 55.5f, [Shot, LogI]() { LogI(TEXT("workshop")); Shot(TEXT("09_workshop")); } },
+			// 7) түн: вагон іші мен кеңсе
+			{ 56.f, [this, Wagon, Put, Inside]() { Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 23.0; if (AKAPStructure* Sw = Wagon()) Put(Inside(Sw, FVector(150, 20, 0)), Sw->GetActorTransform().TransformPosition(FVector(-380, -60, 130))); } },
+			{ 60.f, [Shot]() { Shot(TEXT("10_wagon_night")); } },
+			{ 60.5f, [Wagon, DoorOf, Put, Ground]() { if (AKAPDoor* D = DoorOf(Wagon())) Put(Ground(D->Mid() + D->GetActorRightVector() * 600.f, 95.f), D->Mid()); } },
+			{ 63.f, [Shot]() { Shot(TEXT("11_wagon_night_outside")); } },
+			{ 63.5f, [Hq, Put, Ground]() { if (AKAPStructure* S = Hq()) Put(Ground(S->GetActorTransform().TransformPosition(FVector(150, 250, 0)), 95.f), S->GetActorTransform().TransformPosition(FVector(-200, -300, 100))); } },
+			{ 67.f, [Shot]() { Shot(TEXT("12_hq_night")); } },
+			// 8) асфальт: 3 с жүру, аяқ астындағы беткей
+			{ 67.5f, [this, Put, Ground, Ja, Jb, Drive]()
+			{
+				Weather->bInstant = true; S().Time = FMath::FloorToDouble(S().Time / 24) * 24 + 10.5;
+				const FVector2D P0 = FMath::Lerp(Ja, Jb, 0.3), Dd = (Jb - Ja).GetSafeNormal();
+				Put(Ground(FVector(P0.X * 100, P0.Y * 100, 0), 100.f), Ground(FVector(Jb.X * 100, Jb.Y * 100, 0), 100.f));
+				if (AKAPCharacter* P = Player()) Drive(P, FVector(Dd.X, Dd.Y, 0), 3.f);
+			} },
+			{ 70.f, [this]() { if (AKAPCharacter* P = Player()) UE_LOG(LogTemp, Display, TEXT("KAPDOOR asphalt floor=%s surface=%d"), *GetNameSafe(P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent()), UKAPAudio::SurfaceOf(P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent())); } },
+			{ 72.f, []() { FGenericPlatformMisc::RequestExit(false); } },
 		};
 		for (FStep& Sx : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([F = Sx.F]() { F(); }), Sx.T, false); }
 	}
@@ -1073,13 +1213,7 @@ void AKAPGameMode::Tick(float Dt)
 			Au->SetDread((Weather->Env.bNight ? 0.45f : 0.08f) + FearSm * 0.6f - IndoorAu * 0.15f, FearSm);
 			// музыка: тыныш кезде әлсіз фон (түнде ғана), қауіп өскенде қабаттар қосылады
 			Au->SetMusic(FearSm, FearSm > 0.2f ? 0.4f + FearSm * 0.6f : (Weather->Env.bNight ? 0.25f : 0.f));
-			// баспанаға кіру/шығу — есік сықыры мен тарсылы (вагон — металл, ағаш еден — ағаш)
-			if (P->bIndoor != bWasIndoor)
-			{
-				bWasIndoor = P->bIndoor;
-				if (DoorCd <= 0) { Au->Door(P->GetActorLocation() + P->GetActorForwardVector() * 60.f, 0); DoorCd = 1.5f; UE_LOG(LogTemp, Display, TEXT("KAPTEST door indoor=%d"), P->bIndoor ? 1 : 0); }
-			}
-			DoorCd -= Dt;
+			// есік дыбысы енді AKAPDoor-дың өзінде (ашылғанда/жабылғанда); бұрын ішке кірген сайын «жалған» есік дыбысы шығатын
 			// домбыра: таң мен кеште, қауіп жоқ кезде, сирек (5–9 минутта бір)
 			DombraCd -= Dt;
 			{ const double Hh = FMath::Fmod(Ss.Time, 24.0); if (DombraCd <= 0 && FearSm < 0.1f && ((Hh > 5.5 && Hh < 7.5) || (Hh > 18.0 && Hh < 20.5))) { const float Dur = Au->Dombra(); Au->Duck(Dur, 0.35f); DombraCd = FMath::FRandRange(300.f, 540.f); UE_LOG(LogTemp, Display, TEXT("KAPTEST dombra")); } }

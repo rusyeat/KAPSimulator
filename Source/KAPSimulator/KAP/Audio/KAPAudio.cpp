@@ -12,6 +12,8 @@
 #include "Containers/Ticker.h"
 #include "Misc/CoreDelegates.h"
 #include "AudioDevice.h"
+#include "GameFramework/Pawn.h"
+#include "Components/PrimitiveComponent.h"
 
 static constexpr int32 SR = 44100;
 
@@ -571,9 +573,42 @@ USoundAttenuation* UKAPAudio::AttenFar()
 	return AttenuationFar;
 }
 
-// Беткейге қарай қадам: 0 — құм, 1 — металл, 2 — ағаш/еден, 3 — тас/бетон
+int32 UKAPAudio::SurfaceOf(const UPrimitiveComponent* C)
+{
+	if (!C) return 0;
+	if (C->ComponentHasTag("SurfAsphalt")) return 5;
+	if (C->ComponentHasTag("SurfDirt")) return 4;
+	if (C->ComponentHasTag("SurfMetal")) return 1;
+	if (C->ComponentHasTag("SurfWood")) return 2;
+	if (C->ComponentHasTag("SurfConcrete")) return 3;
+	const AActor* A = C->GetOwner();
+	if (!A || A->GetClass()->GetName().Contains(TEXT("Landscape"))) return 0;
+	if (A->IsA<APawn>()) return 1; // көлік үсті
+	return 3; // тегі жоқ зат (тас, қап, т.б.) — бұрын металл деп танылатын (асфальтта сыңғыр шығатын)
+}
+int32 UKAPAudio::SurfaceBelow(UWorld* W, const FVector& From, const AActor* Ignore)
+{
+	if (!W) return 0;
+	FHitResult H;
+	FCollisionQueryParams Q(SCENE_QUERY_STAT(KAPStepSurf), false, Ignore);
+	if (!W->LineTraceSingleByChannel(H, From, From - FVector(0, 0, 220), ECC_Visibility, Q)) return 0;
+	return SurfaceOf(H.GetComponent());
+}
+
+// Беткейге қарай қадам: 0 — құм, 1 — металл, 2 — ағаш/еден, 3 — тас/бетон, 4 — қиыршық, 5 — асфальт
 void UKAPAudio::Footstep(FVector Loc, int32 Surface, float Vol, bool bRun)
 {
+	if (Surface == 5)
+	{
+		// асфальт: бетон қадамы сәл төменірек (жұмсақ, тұйық) + жол бетіндегі құмның әлсіз сырылы
+		if (HasBank("StepConcrete"))
+		{
+			PlayBank("StepConcrete", Loc, Vol * 0.9f, FMath::FRandRange(0.84f, 0.94f));
+			if (HasBank("StepDirt")) PlayBank("StepDirt", Loc, Vol * 0.2f, FMath::FRandRange(1.05f, 1.2f));
+			return;
+		}
+		Surface = 3;
+	}
 	{
 		// құм: тау етігінің нақты қадамдары (жүру 24 / жүгіру 19 түрі, freesound CC0)
 		if (Surface == 0 && bRun && HasBank("StepSandRun")) { PlayBank("StepSandRun", Loc, Vol * 0.85f, FMath::FRandRange(0.94f, 1.06f)); return; }
@@ -695,18 +730,34 @@ void UKAPAudio::SetMusic(float Intensity, float Volume)
 // Есік: сықыр — «жабысып-сырғу» импульстері резонатордан өтеді (жиілігі баяу өзгереді), соңында тарс жабылу
 void UKAPAudio::Door(FVector Loc, int32 Type)
 {
-	if (HasBank("DoorOpen") && GetWorld())
+	DoorSfx(Loc, Type, 0);
+	if (!GetWorld()) return;
+	TWeakObjectPtr<UKAPAudio> Self(this); FTimerHandle H;
+	GetWorld()->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([Self, Loc, Type]() { if (Self.IsValid()) Self->DoorSfx(Loc, Type, 2); }), 0.75f, false);
+}
+void UKAPAudio::DoorSfx(FVector Loc, int32 Type, int32 Phase)
+{
+	if (!GetWorld()) return;
+	if (HasBank("DoorOpen") && HasBank("DoorClose"))
 	{
-		PlayBank("DoorOpen", Loc, 0.9f, FMath::FRandRange(0.92f, 1.05f));
-		if (Type == 0) PlayBank("Creak", Loc, 0.45f, FMath::FRandRange(0.8f, 0.95f));
-		TWeakObjectPtr<UKAPAudio> Self(this); FTimerHandle H;
-		GetWorld()->GetTimerManager().SetTimer(H, FTimerDelegate::CreateLambda([Self, Loc]() { if (Self.IsValid()) Self->PlayBank("DoorClose", Loc, 0.9f, FMath::FRandRange(0.92f, 1.05f)); }), 0.75f, false);
+		if (Phase == 0)
+		{
+			PlayBank("DoorOpen", Loc, 0.85f, FMath::FRandRange(0.92f, 1.05f));
+			if (Type == 0) PlayBank("Creak", Loc, 0.4f, FMath::FRandRange(0.8f, 0.95f));
+		}
+		else if (Phase == 1) { if (Type == 0) PlayBank("Creak", Loc, 0.22f, FMath::FRandRange(0.95f, 1.1f)); }
+		else PlayBank("DoorClose", Loc, 0.9f, FMath::FRandRange(0.92f, 1.05f));
 		return;
 	}
+	DoorSynth(Loc, Type, Phase != 2, Phase == 2);
+}
+void UKAPAudio::DoorSynth(FVector Loc, int32 Type, bool bCreak, bool bSlam)
+{
 	FRandomStream Rg(FMath::Rand());
-	const float Dur = Rg.FRandRange(0.6f, 1.1f);
+	const float Dur = bCreak ? Rg.FRandRange(0.6f, 1.1f) : 0.f;
 	const int32 N = (int32)(Dur * SR);
-	TArray<int16> B; B.SetNumZeroed(N + SR / 2);
+	TArray<int16> B; B.SetNumZeroed(N + (bSlam ? SR / 2 : 0));
+	if (B.Num() == 0) return;
 	const float Fres = Type == 0 ? Rg.FRandRange(900.f, 1400.f) : Rg.FRandRange(500.f, 750.f);
 	float SvL2 = 0, SvB2 = 0, Next = 0;
 	for (int32 i = 0; i < N; i++)
@@ -722,9 +773,12 @@ void UKAPAudio::Door(FVector Loc, int32 Type)
 		B[i] = (int16)FMath::Clamp(SvB2 * Env * (Type == 0 ? 9000.f : 7000.f), -32767.f, 32767.f);
 	}
 	// тарс: төмен соққы + металл болса шыңыл
-	TArray<int16> Slam; Noise(Slam, 0.35f, Type == 0 ? 0.9f : 0.7f, Type == 0 ? 0.12f : 0.07f, 0.07f);
-	if (Type == 0) Tone(Slam, 0, 0.6f, 180.f, 0.15f, 170.f, 1);
-	for (int32 k = 0; k < Slam.Num() && N + k < B.Num(); k++) B[N + k] = (int16)FMath::Clamp((int32)B[N + k] + Slam[k], -32767, 32767);
+	if (bSlam)
+	{
+		TArray<int16> Slam; Noise(Slam, 0.35f, Type == 0 ? 0.9f : 0.7f, Type == 0 ? 0.12f : 0.07f, 0.07f);
+		if (Type == 0) Tone(Slam, 0, 0.6f, 180.f, 0.15f, 170.f, 1);
+		for (int32 k = 0; k < Slam.Num() && N + k < B.Num(); k++) B[N + k] = (int16)FMath::Clamp((int32)B[N + k] + Slam[k], -32767, 32767);
+	}
 	if (GetWorld()) UGameplayStatics::PlaySoundAtLocation(GetWorld(), MakeBuffer(B), Loc, 0.9f, Rg.FRandRange(0.95f, 1.05f), 0.f, Atten());
 }
 // Домбыра: шертілген ішек (Карплус–Стронг) — пентатоникалық минор, екі ішек (әуен + бұрдон), күй ырғағы; сирек, тыныш
