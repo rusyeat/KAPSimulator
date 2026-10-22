@@ -197,6 +197,11 @@ void AKAPStructure::BuildWorkshop(FRandomStream& R, bool bBig)
 	SetActorTickInterval(0.f);
 }
 
+void AKAPStructure::ForceFlicker(bool bOn)
+{
+	for (FFlick& F : Flicks) { F.bBad = bOn; F.Next = bOn ? 0.05f : F.Next; }
+}
+
 /** Жыпылықтау, индикаторлар, апат маягы мен сирена (Tick-тен) */
 void AKAPStructure::TickLights(float Dt)
 {
@@ -239,5 +244,5 @@ void AKAPStructure::TickLights(float Dt)
 		BeaconL->SetIntensity(bAlarm ? 9000.f : 0.f);
 		if (UMaterialInstanceDynamic* M = Cast<UMaterialInstanceDynamic>(BeaconM->GetMaterial(0))) M->SetVectorParameterValue("Emissive", FLinearColor(1.f, 0.08f, 0.02f) * (bAlarm ? 20.f + 30.f * FMath::Max(0.f, FMath::Cos(FMath::DegreesToRadians(BeaconYaw - 90.f))) : 0.3f));
 	}
-	if (SirenW) SirenW->TargetGain = bAlarm ? 0.22f : 0.f;
+	if (SirenW) SirenW->TargetGain = bAlarm ? 0.22f * SirenGainMul : 0.f;
 }

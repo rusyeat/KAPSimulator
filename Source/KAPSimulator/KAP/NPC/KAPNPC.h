@@ -44,6 +44,8 @@ public:
 	void PickTask();
 	void SetCarry(bool bOn);
 	void SetTool(bool bOn);
+	/** Сырттан басқару (трейлер): бір кадрға нүктеге қарай жүру (AI өшік кезде, әр кадрда шақырылады) */
+	void ScriptSteer(FVector2D TargetM, float Speed) { SteerTo(TargetM, Speed); }
 	void FaceTo(const FVector2D& Pm);
 	void SayTask(const TCHAR* Kk);
 	float TaskT = 0.f, TaskDur = 0.f, TaskSayCd = 10.f, WorkFxT = 0.f, FleeScan = 0.f, LookYaw = 0.f;

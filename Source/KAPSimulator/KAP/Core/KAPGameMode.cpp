@@ -126,6 +126,8 @@ void AKAPGameMode::BeginPlay()
 	if (bInMenu) { SetupMenuScene(); if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->SetMenuMusic(true); }
 	// Автоматты тексеру: -kapautotest (скриншоттар Saved/Screenshots ішіне)
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapsounddump"))) { FTimerHandle Hd; GetWorldTimerManager().SetTimer(Hd, FTimerDelegate::CreateLambda([this]() { UKAPAudio::Get(this)->DumpAll(); FGenericPlatformMisc::RequestExit(false); }), 2.f, false); }
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kaptrailershots"))) StartTrailer(true);   // тизердің алдын ала кадрлары (KAPTrailer.cpp)
+	else if (FParse::Param(FCommandLine::Get(), TEXT("kaptrailer"))) StartTrailer(false);       // тизер: Movie Render Queue рендері
 	else if (FParse::Param(FCommandLine::Get(), TEXT("kapvehshots")))
 	{
 		// Көлік корпустарын тексеру: әр көлік — алдыңғы және артқы 3/4 көрініс, күндізгі жарық

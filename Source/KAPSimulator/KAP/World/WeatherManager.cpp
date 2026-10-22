@@ -234,8 +234,8 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	P.bOverride_AutoExposureHighPercent = true; P.AutoExposureHighPercent = FMath::Lerp(90.f, 97.f, Night);
 	// дауыл: біркелкі жарық «қабырға» емес, күңгірт, ауыр
 	P.AutoExposureBias += -0.7f * Env.Storm;
-	P.bOverride_AutoExposureSpeedUp = true; P.AutoExposureSpeedUp = 2.f;
-	P.bOverride_AutoExposureSpeedDown = true; P.AutoExposureSpeedDown = 1.f;
+	P.bOverride_AutoExposureSpeedUp = true; P.AutoExposureSpeedUp = bFastExposure ? 40.f : 2.f;
+	P.bOverride_AutoExposureSpeedDown = true; P.AutoExposureSpeedDown = bFastExposure ? 40.f : 1.f;
 	SkyRecaptureAcc += Dt;
 	if (SkyRecaptureAcc > 0.5f) { SkyRecaptureAcc = 0; SkyLight->RecaptureSky(); }
 }

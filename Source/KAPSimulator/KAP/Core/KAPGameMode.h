@@ -186,6 +186,27 @@ private:
 	TOptional<FCine> Cine;
 	UPROPERTY() TObjectPtr<ACameraActor> CineCam;
 	TArray<TWeakObjectPtr<AActor>> CineActors;
+	// ---- 15 с тизер-трейлер (KAPTrailer.cpp): -kaptrailer — MRQ рендері, -kaptrailershots — алдын ала кадрлар ----
+	void StartTrailer(bool bShots);
+	void TrailerBegin();
+	void TrailerTick(float CineT, float Dt);
+	void TrailerEnterShot(int32 Shot);
+	bool bTrailerMRQ = false, bTrailerShots = false;
+	float TrailerPrevT = -1.f;
+	int32 TrailerShotI = -1;
+	TSet<int32> TrailerFired;
+	TArray<TWeakObjectPtr<AKAPNPC>> TrailerNPCs;
+	TWeakObjectPtr<AKAPNPC> TrailerWalker, TrailerMonster;
+	FVector2D TrailerWalkTo = FVector2D::ZeroVector;
+	FVector TrA = FVector::ZeroVector, TrB = FVector::ZeroVector, TrLook = FVector::ZeroVector, TrLookB = FVector::ZeroVector;
+	float TrFov = 50.f, TrShake = 0.f;
+	UPROPERTY() TObjectPtr<class USpotLightComponent> TrailerTorch;
+	UPROPERTY() TObjectPtr<class UAudioComponent> TrailerMusic;
+	UPROPERTY() TObjectPtr<class UAudioComponent> TrailerMusic2;
+	UPROPERTY() TArray<TObjectPtr<class UAudioComponent>> TrailerSfx;
+	TSharedPtr<class SWidget> TrailerUI;
+	float TrBlack = 1.f, TrCardA = 0.f, TrTitleA = 0.f, TrSubA = 0.f, TrSmallA = 0.f;
+	FString TrCard, TrSmall;
 	/** Басты мәзір сахнасы (KAPMenuScene.cpp): түнгі ұңғыма, маңдай шамы бар инженер, апат шамы, прожектор */
 	void SetupMenuScene();
 	void ClearMenuScene();

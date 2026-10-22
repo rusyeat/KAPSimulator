@@ -35,6 +35,8 @@ public:
 	float OpenAmount() const { return Ang; }
 	/** Ойықтың ортасы (әлем, еденнен 1 м) */
 	FVector Mid() const;
+	/** Сырттан соққы: тарс + полотно дірілі (құбыжық, трейлер) */
+	void Knock(float Strength = 1.f);
 
 	UPROPERTY() TObjectPtr<USceneComponent> Hinge;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Leaf;

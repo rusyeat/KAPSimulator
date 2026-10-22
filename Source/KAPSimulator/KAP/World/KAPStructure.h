@@ -50,6 +50,10 @@ public:
 	bool bAlarm = false;
 	/** Ашылатын есіктер (KAPDoor.cpp) */
 	TArray<TWeakObjectPtr<class AKAPDoor>> Doors;
+	/** Барлық шамды «ақаулы» етеді — жыпылықтайды (трейлер) */
+	void ForceFlicker(bool bOn);
+	/** Сирена қаттылығының көбейткіші (трейлерде күшейтіледі) */
+	float SirenGainMul = 1.f;
 	virtual void Destroyed() override;
 private:
 	friend class AKAPWorldBuilder;

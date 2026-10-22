@@ -52,6 +52,8 @@ public:
 	float Fear = 0.f;
 	/** Ойыншы ғимарат ішінде (0..1): экспозиция көтерілмейді — шам жарығы «дақ» болып көрінеді */
 	float Indoor = 0.f;
+	/** Экспозиция бірден бейімделеді (трейлердегі кесу кадрлары үшін) */
+	bool bFastExposure = false;
 
 	static AWeatherManager* Get(UWorld* W);
 private:

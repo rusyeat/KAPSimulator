@@ -27,7 +27,9 @@ public class KAPSimulator : ModuleRules
 			"AudioExtensions",
 			"RenderCore",
 			"RHI",
-			"ProceduralMeshComponent"
+			"ProceduralMeshComponent",
+			"LevelSequence",
+			"MovieScene"
 		});
 
 		PublicIncludePaths.AddRange(new string[] {

@@ -137,10 +137,16 @@ void AKAPDoor::CheckNPCs()
 	// құбыжық жабық есікті ұрады: тарс, полотно дірілдейді
 	if (Beast && Ang < 0.02f && KnockCd <= 0.f)
 	{
-		KnockCd = FMath::FRandRange(0.8f, 2.2f); ShakeT = 0.25f; Knocks++;
-		if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Impact(M, SoundType == 0 ? 1 : 2, FMath::FRandRange(0.75f, 1.f));
-		SetActorTickInterval(0.f);
+		KnockCd = FMath::FRandRange(0.8f, 2.2f);
+		Knock(FMath::FRandRange(0.75f, 1.f));
 	}
+}
+
+void AKAPDoor::Knock(float Strength)
+{
+	ShakeT = 0.25f; Knocks++;
+	if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Impact(Mid(), SoundType == 0 ? 1 : 2, Strength);
+	SetActorTickInterval(0.f);
 }
 
 void AKAPDoor::Tick(float Dt)
