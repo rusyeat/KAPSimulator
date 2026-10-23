@@ -9,6 +9,13 @@
 #include "Components/PostProcessComponent.h"
 #include "Materials/MaterialInterface.h"
 #include "EngineUtils.h"
+#include "KAPVisuals.h"
+#include "KAPWeatherFX.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 
 AWeatherManager::AWeatherManager()
 {
@@ -29,6 +36,8 @@ AWeatherManager::AWeatherManager()
 	// таң/кеште шаң арқылы күн сәулесінің «бағаналары» (экрандық, арзан)
 	Sun->bEnableLightShaftBloom = true; Sun->BloomScale = 0.12f; Sun->BloomThreshold = 6.f;
 	Sun->bEnableLightShaftOcclusion = true; Sun->OcclusionMaskDarkness = 0.35f;
+	// бұлт көлеңкелері далада жылжиды (бұлтты күн)
+	Sun->bCastCloudShadows = true; Sun->CloudShadowStrength = 0.85f; Sun->CloudShadowOnSurfaceStrength = 1.f;
 
 	Moon = CreateDefaultSubobject<UDirectionalLightComponent>("Moon");
 	Moon->SetupAttachment(RootComponent);
@@ -69,7 +78,18 @@ void AWeatherManager::BeginPlay()
 	Super::BeginPlay();
 	Rng.Initialize(FPlatformTime::Cycles());
 	if (UMaterialInterface* CM = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineSky/VolumetricClouds/m_SimpleVolumetricCloud_Inst.m_SimpleVolumetricCloud_Inst")))
-		Clouds->SetMaterial(CM);
+	{
+		CloudMID = UMaterialInstanceDynamic::Create(CM, this);
+		Clouds->SetMaterial(CloudMID);
+		TArray<FMaterialParameterInfo> Inf; TArray<FGuid> Ids;
+		CM->GetAllScalarParameterInfo(Inf, Ids); for (const FMaterialParameterInfo& I : Inf) CloudScalars.Add(I.Name);
+		Inf.Reset(); Ids.Reset(); CM->GetAllVectorParameterInfo(Inf, Ids); for (const FMaterialParameterInfo& I : Inf) CloudVectors.Add(I.Name);
+		FString Sc, Vc; for (const FName& N : CloudScalars) Sc += N.ToString() + TEXT(" "); for (const FName& N : CloudVectors) Vc += N.ToString() + TEXT(" ");
+		UE_LOG(LogTemp, Display, TEXT("KAPWEATHER cloud scalars: %s | vectors: %s"), *Sc, *Vc);
+	}
+	EnvMPC = LoadObject<UMaterialParameterCollection>(nullptr, TEXT("/Game/KAP/Materials/MPC_KAPEnv.MPC_KAPEnv"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	// жаңбыр тамшылары, найзағай сызығы (ойында ғана)
+	if (GetWorld()->IsGameWorld()) GetWorld()->SpawnActor<AKAPWeatherFX>();
 	// Сыртқы ашылу (auto exposure) шамалы — дала жарық, түн қараңғы болуы үшін
 	FPostProcessSettings& P = Post->Settings;
 	P.bOverride_AutoExposureMinBrightness = true; P.AutoExposureMinBrightness = 0.5f;
@@ -92,55 +112,141 @@ const FKAPWeatherSeg* AWeatherManager::SegAt(const FKAPSession& S, double Hour) 
 	return nullptr;
 }
 
+/** Ауа райының табиғи тізбегі: бұлт → жаңбыр → найзағай, ыстық → гроза/шаң дауылы, қатты жел → құм дауылы */
 void AWeatherManager::GenSchedule(FKAPSession& S, double Until)
 {
 	double T = S.Weather.Num() ? S.Weather.Last().Start + S.Weather.Last().Dur : S.Time;
 	while (T < Until)
 	{
 		const EWeatherType Prev = S.Weather.Num() ? S.Weather.Last().Type : EWeatherType::Clear;
-		FKAPWeatherSeg Seg; Seg.Start = T; Seg.Type = EWeatherType::Clear; Seg.Dur = 3 + Rng.FRand() * 6;
-		if (Prev == EWeatherType::Clear)
+		const double H = FMath::Fmod(T, 24.0); const float R = Rng.FRand();
+		const bool bDay = H > 9 && H < 19, bAfternoon = H > 12 && H < 19, bNightMorning = H > 22 || H < 8;
+		FKAPWeatherSeg Seg; Seg.Start = T; Seg.Type = EWeatherType::Clear; Seg.Dur = 2.5 + Rng.FRand() * 5;
+		auto Set = [&](EWeatherType W, double D0, double D1) { Seg.Type = W; Seg.Dur = D0 + Rng.FRand() * (D1 - D0); };
+		switch (Prev)
 		{
-			const double H = FMath::Fmod(T, 24.0); const float R = Rng.FRand();
-			if (H > 10 && H < 16 && R < 0.35f) { Seg.Type = EWeatherType::Heat; Seg.Dur = 3 + Rng.FRand() * 3; }
-			else if (R < 0.55f) { Seg.Type = EWeatherType::Storm; Seg.Dur = 0.8 + Rng.FRand() * 1.2; }
-			else if (R < 0.75f) { Seg.Type = EWeatherType::Rain; Seg.Dur = 1 + Rng.FRand() * 2; }
-			else if ((H > 22 || H < 7) && R < 0.95f) { Seg.Type = EWeatherType::Fog; Seg.Dur = 1.5 + Rng.FRand() * 2; }
+		case EWeatherType::Clear:
+			if (bDay && H > 10 && H < 16 && R < 0.22f) Set(EWeatherType::Heat, 3, 6);
+			else if (R < 0.48f) Set(EWeatherType::Cloudy, 2, 5);
+			else if (R < 0.6f) Set(EWeatherType::Windy, 1.5, 3.5);
+			else if (R < 0.68f) Set(EWeatherType::Storm, 0.8, 2);
+			else if (bNightMorning && R < 0.82f) Set(EWeatherType::Fog, 1.5, 3.5);
+			break;
+		case EWeatherType::Cloudy:
+			if (R < 0.38f) Set(EWeatherType::Rain, 1, 3);
+			else if (R < (bAfternoon ? 0.62f : 0.5f)) Set(EWeatherType::Thunder, 0.8, 2);
+			else if (R < 0.7f) Set(EWeatherType::Windy, 1.5, 3);
+			break;
+		case EWeatherType::Rain:
+			if (R < 0.2f) Set(EWeatherType::Thunder, 0.7, 1.6);
+			else if (R < 0.65f) Set(EWeatherType::Cloudy, 1.5, 3.5);
+			break;
+		case EWeatherType::Thunder:
+			if (R < 0.45f) Set(EWeatherType::Rain, 1, 2.5);
+			else if (R < 0.8f) Set(EWeatherType::Cloudy, 1.5, 3);
+			break;
+		case EWeatherType::Heat:
+			if (bAfternoon && R < 0.28f) Set(EWeatherType::Thunder, 0.8, 1.8); // ыстықтан кейінгі гроза
+			else if (R < 0.42f) Set(EWeatherType::Storm, 0.8, 1.6);           // құрғақ шаң дауылы
+			else if (R < 0.55f) Set(EWeatherType::Windy, 1.5, 3);
+			break;
+		case EWeatherType::Windy:
+			if (R < 0.35f) Set(EWeatherType::Storm, 0.8, 2);                  // жел күшейіп, құм көтереді
+			else if (R < 0.6f) Set(EWeatherType::Cloudy, 2, 4);
+			break;
+		case EWeatherType::Storm:
+			if (R < 0.4f) Set(EWeatherType::Windy, 1, 2.5);
+			break;
+		case EWeatherType::Fog:
+			if (R < 0.3f) Set(EWeatherType::Cloudy, 2, 4);
+			break;
 		}
 		S.Weather.Add(Seg);
 		T += Seg.Dur;
 	}
 }
 
+AWeatherManager::FTarget AWeatherManager::TargetOf(EWeatherType T)
+{
+	switch (T)
+	{
+	//                                     Storm  Rain   Fog   Heat  Cloud  Thund  Wind м/с  Көріну м
+	case EWeatherType::Heat:    return { 0.f,   0.f,   0.f,  1.f,  0.05f, 0.f,   2.f,  3200.f };
+	case EWeatherType::Storm:   return { 1.f,   0.f,   0.f,  0.f,  0.55f, 0.f,   19.f, 36.f };
+	case EWeatherType::Rain:    return { 0.f,   0.75f, 0.f,  0.f,  0.92f, 0.f,   6.f,  750.f };
+	case EWeatherType::Fog:     return { 0.f,   0.f,   1.f,  0.f,  0.6f,  0.f,   1.f,  55.f };
+	case EWeatherType::Cloudy:  return { 0.f,   0.f,   0.f,  0.f,  0.52f, 0.f,   5.f,  4500.f };
+	case EWeatherType::Thunder: return { 0.f,   1.f,   0.f,  0.f,  1.f,   1.f,   11.f, 450.f };
+	case EWeatherType::Windy:   return { 0.12f, 0.f,   0.f,  0.f,  0.35f, 0.f,   14.f, 1900.f };
+	default:                    return { 0.f,   0.f,   0.f,  0.f,  0.18f, 0.f,   3.5f, 5500.f };
+	}
+}
+
+void AWeatherManager::Strike(const FVector& Around)
+{
+	// жақын соққы сирек: 25% — 1.2 км ішінде, қалғаны 1.2–4.5 км
+	const float D = Rng.FRand() < 0.25f ? Rng.FRandRange(150.f, 1200.f) : Rng.FRandRange(1200.f, 4500.f);
+	const float A = Rng.FRandRange(0.f, UE_TWO_PI);
+	FVector P = Around + FVector(FMath::Cos(A), FMath::Sin(A), 0) * (D * 100.f);
+	P.Z = KAPVis::GroundZ(GetWorld(), P.X, P.Y, Around.Z);
+	Env.StrikeAt = P;
+	Env.StrikeSeq++;
+	Env.StrikeDelay = D / 343.f;
+	Env.Lightning = 1.f;
+}
+
 void AWeatherManager::UpdateEnv(FKAPSession& S, float Dt, double Dh)
 {
 	while (S.Weather.Num() && S.Weather[0].Start + S.Weather[0].Dur < S.Time - 2) S.Weather.RemoveAt(0);
 	GenSchedule(S, S.Time + 36);
-	float Target[4] = { 0, 0, 0, 0 }; // storm, rain, fog, heat
 	EWeatherType Cur = EWeatherType::Clear;
+	const FKAPWeatherSeg* Seg = SegAt(S, S.Time);
 	if (bOverride) { Cur = OverrideType; }
-	else if (const FKAPWeatherSeg* Seg = SegAt(S, S.Time)) Cur = Seg->Type;
+	else if (Seg) Cur = Seg->Type;
 	Env.Cur = Cur;
 	float Ramp = bOverride ? FMath::Clamp(OverrideK, 0.f, 1.f) : 1.f;
-	if (!bOverride) if (const FKAPWeatherSeg* Seg = SegAt(S, S.Time)) Ramp = FMath::Clamp((float)FMath::Min(S.Time - Seg->Start, Seg->Start + Seg->Dur - S.Time) / 0.2f, 0.f, 1.f);
-	if (Cur == EWeatherType::Storm) Target[0] = Ramp; else if (Cur == EWeatherType::Rain) Target[1] = Ramp; else if (Cur == EWeatherType::Fog) Target[2] = Ramp; else if (Cur == EWeatherType::Heat) Target[3] = Ramp;
+	if (!bOverride && Seg) Ramp = FMath::Clamp((float)FMath::Min(S.Time - Seg->Start, Seg->Start + Seg->Dur - S.Time) / 0.2f, 0.f, 1.f);
+	const FTarget Tc = TargetOf(EWeatherType::Clear), Tw = TargetOf(Cur);
+	auto Mix = [Ramp](float A, float B) { return FMath::Lerp(A, B, Ramp); };
 	const float K = bInstant ? 1.f : FMath::Min(1.f, Dt * 0.6f);
+	Env.Storm = FMath::Lerp(Env.Storm, Mix(Tc.Storm, Tw.Storm), K); Env.Rain = FMath::Lerp(Env.Rain, Mix(Tc.Rain, Tw.Rain), K);
+	Env.Fog = FMath::Lerp(Env.Fog, Mix(Tc.Fog, Tw.Fog), K); Env.Heat = FMath::Lerp(Env.Heat, Mix(Tc.Heat, Tw.Heat), K);
+	Env.Cloud = FMath::Lerp(Env.Cloud, Mix(Tc.Cloud, Tw.Cloud), bInstant ? 1.f : FMath::Min(1.f, Dt * 0.25f));
+	Env.Thunder = FMath::Lerp(Env.Thunder, Mix(Tc.Thunder, Tw.Thunder), K);
+	// ---- жел: орташа жылдамдық ауа райына қарай, бағыты баяу бұрылады, екпіні — шу (гроза мен қатты желде күшті) ----
+	WindT += Dt;
+	WindBase = FMath::Lerp(WindBase, Mix(Tc.WindMs, Tw.WindMs), bInstant ? 1.f : FMath::Min(1.f, Dt * 0.15f));
+	if (Seg) { const uint32 Hs = GetTypeHash(FMath::FloorToInt64(Seg->Start * 100.0)); YawTarget = 20.f + ((Hs % 1000) / 1000.f - 0.5f) * 140.f; }
+	YawBase = FMath::FInterpTo(YawBase, YawTarget, Dt, 0.05f);
+	const float Gusty = 0.25f + 0.45f * FMath::Max(Env.Thunder, FMath::Clamp((WindBase - 8.f) / 8.f, 0.f, 1.f));
+	Env.Gust = FMath::Max(0.3f, 1.f + Gusty * FMath::PerlinNoise1D(WindT * 0.21f) + 0.12f * FMath::PerlinNoise1D(WindT * 1.3f + 3.7f));
+	Env.WindMs = ForceWindMs >= 0.f ? ForceWindMs : WindBase * Env.Gust;
+	Env.WindYaw = ForceWindYaw > -900.f ? ForceWindYaw : YawBase + 14.f * FMath::PerlinNoise1D(WindT * 0.05f + 11.f);
+	Env.Wind = FRotator(0, Env.WindYaw, 0).Vector() * (Env.WindMs * 100.f);
 	bInstant = false;
-	Env.Storm = FMath::Lerp(Env.Storm, Target[0], K); Env.Rain = FMath::Lerp(Env.Rain, Target[1], K);
-	Env.Fog = FMath::Lerp(Env.Fog, Target[2], K); Env.Heat = FMath::Lerp(Env.Heat, Target[3], K);
-	Env.Wet = FMath::Clamp(Env.Wet + (Env.Rain > 0.3f ? 0.8f : -0.4f) * (float)Dh, 0.f, 1.f);
+	// ---- жер ылғалы: жаңбыр сіңеді, күн мен жел кептіреді (батпақ 2–4 сағатта кебеді) ----
 	const double H = FMath::Fmod(S.Time, 24.0);
 	const float SunF = FMath::Sin((float)((H - 9.0) / 24.0 * UE_TWO_PI));
-	Env.Temp = 21.f + 13.f * SunF + Env.Heat * 10.f - Env.Rain * 6.f - Env.Storm * 3.f;
 	const float Elev = FMath::Sin((float)((H - 6.0) / 12.0 * UE_PI));
+	const float Dry = (0.16f + 0.3f * Env.Heat + 0.012f * Env.WindMs + (Elev > 0 ? 0.08f : 0.f)) * (1.f - Env.Cloud * 0.4f);
+	Env.Wet = FMath::Clamp(Env.Wet + (Env.Rain > 0.15f ? Env.Rain * 0.9f : -Dry) * (float)Dh, 0.f, 1.f);
+	Env.Temp = 21.f + 13.f * SunF * (1.f - Env.Cloud * 0.35f) + Env.Heat * 10.f - Env.Rain * 6.f - Env.Storm * 3.f - FMath::Max(0.f, Env.WindMs - 6.f) * 0.25f;
 	Env.bNight = Elev < 0;
-	// дала әрқашан шаңды: ашық күнде де алыс көкжиек мұнарға сіңеді (атмосфера + алыс бөлшектер көрінбейді)
-	float Vis = Elev > 0 ? 680.f : FMath::Lerp(680.f, 430.f, FMath::Clamp(-Elev * 4.f, 0.f, 1.f));
-	Vis = FMath::Lerp(Vis, 220.f, Env.Rain); Vis = FMath::Lerp(Vis, 55.f, Env.Fog); Vis = FMath::Lerp(Vis, 36.f, Env.Storm);
+	// ---- көріну: ашық күні таулар көрінеді (5.5 км), түнде қараңғылық шектейді ----
+	float VisT = FMath::Exp(FMath::Lerp(FMath::Loge(Tc.Vis), FMath::Loge(Tw.Vis), Ramp));
+	if (Elev <= 0) VisT = FMath::Min(VisT, FMath::Lerp(5500.f, 1600.f, FMath::Clamp(-Elev * 4.f, 0.f, 1.f)));
+	const float Vis0 = FMath::Max(10.f, Env.Visibility);
+	const float Vis = FMath::Exp(FMath::Lerp(FMath::Loge(Vis0), FMath::Loge(VisT), K));
 	Env.Visibility = VisOverride > 0 ? VisOverride : Vis;
-	Env.Wind = FVector(200 + Env.Storm * 1400, 50 + Env.Storm * 400, 0);
+	// ---- найзағай: грозада жиі, жай жаңбырда сирек ----
 	Env.Lightning = FMath::Max(0.f, Env.Lightning - Dt * 4.f);
-	if (Env.Rain > 0.6f && Rng.FRand() < Dt * 0.08f) Env.Lightning = 1.f;
+	const float Rate = Env.Thunder * 0.11f + (Env.Rain > 0.6f ? 0.008f : 0.f);
+	if (Rate > 0.f && Rng.FRand() < Dt * Rate)
+	{
+		FVector At = GetActorLocation();
+		if (const APlayerController* PC = GetWorld()->GetFirstPlayerController()) if (PC->PlayerCameraManager) At = PC->PlayerCameraManager->GetCameraLocation();
+		Strike(At);
+	}
 	ApplyVisuals(S.Time, Dt);
 }
 
@@ -154,7 +260,7 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	Sun->SetWorldRotation(FRotator(-ElevDeg, Yaw, 0));
 	Moon->SetWorldRotation(FRotator(-FMath::Max(10.f, -ElevDeg), Yaw + 180.f, 0));
 	const float Day = FMath::Clamp(FMath::Sin(A) * 3.f + 0.2f, 0.f, 1.f);
-	const float Dim = (1 - Env.Storm * 0.85f) * (1 - Env.Rain * 0.6f) * (1 - Env.Fog * 0.4f);
+	const float Dim = (1 - Env.Storm * 0.85f) * (1 - Env.Rain * 0.6f) * (1 - Env.Fog * 0.4f) * (1 - Env.Cloud * 0.22f);
 	Sun->SetIntensity(FMath::Max(0.f, FMath::Sin(A)) > 0 ? 10.f * Dim + Env.Lightning * 15.f : Env.Lightning * 6.f);
 	Sun->SetTemperature(FMath::Lerp(3200.f, 6000.f, FMath::Clamp(FMath::Sin(A) * 2.f, 0.f, 1.f)));
 	Moon->SetIntensity((1 - Day) * 0.6f * Dim); // ай: суық, әлсіз, бірақ пішіндер көрінеді
@@ -177,7 +283,7 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	HeightFog->SetDirectionalInscatteringExponent(FMath::Lerp(7.f, 3.f, Env.Storm));
 	HeightFog->SetDirectionalInscatteringStartDistance(1500.f);
 	// жерге жабысқан шаң қабаты (~10 м): алыстағы аяқ-қол көмескі, қабат-қабат тереңдік
-	HeightFog->SetSecondFogDensity(0.025f + Env.Storm * 0.22f + Env.Fog * 0.12f + Night * 0.015f);
+	HeightFog->SetSecondFogDensity(0.004f + 0.02f * (1.f - FMath::Clamp(Vis / 3000.f, 0.f, 1.f)) + Env.Storm * 0.22f + Env.Fog * 0.12f + Night * 0.01f);
 	HeightFog->SetSecondFogHeightFalloff(0.9f);
 	HeightFog->SetSecondFogHeightOffset(0.f);
 	HeightFog->SetVolumetricFogDistance(7000.f);
@@ -187,7 +293,28 @@ void AWeatherManager::ApplyVisuals(double Hour, float Dt)
 	// дауылда да жақын 1.5–3 м ашық: заттар қарамен көрінеді, ары қарай біртіндеп жоғалады (тегіс қабырға емес)
 	HeightFog->SetStartDistance(FMath::Lerp(400.f, 150.f, FMath::Max(Env.Storm, Env.Fog)));
 	// Бұлттар — жаңбыр мен дауылда қалыңырақ көрінуі үшін төмендейді
-	Clouds->SetLayerBottomAltitude(FMath::Lerp(5.f, 1.2f, FMath::Max(Env.Rain, Env.Storm)));
+	Clouds->SetLayerBottomAltitude(FMath::Lerp(FMath::Lerp(5.f, 2.4f, Env.Cloud), 1.1f, FMath::Max(Env.Rain, Env.Storm)));
+	Clouds->SetLayerHeight(FMath::Lerp(6.f, 9.f, Env.Thunder));
+	if (CloudMID)
+	{
+		// бұлттылық: «күн бұлтты» — шашыраңқы бұлттар, жаңбыр/гроза — тұтас қара бұлт; жел бағытымен жылжиды
+		if (CloudScalars.Contains("Cloud_GlobalCoverage")) CloudMID->SetScalarParameterValue("Cloud_GlobalCoverage", FMath::Lerp(-0.6f, 0.6f, Env.Cloud));
+		if (CloudVectors.Contains("Cloud_GlobalCoverage")) CloudMID->SetVectorParameterValue("Cloud_GlobalCoverage", FLinearColor(FMath::Lerp(-0.6f, 0.6f, Env.Cloud), FMath::Lerp(-0.6f, 0.6f, Env.Cloud), FMath::Lerp(-0.6f, 0.6f, Env.Cloud), FMath::Lerp(-0.6f, 0.6f, Env.Cloud)));
+		if (CloudScalars.Contains("Storm")) CloudMID->SetScalarParameterValue("Storm", FMath::Max(Env.Thunder, Env.Rain * 0.6f));
+		const FVector Wv = Env.Wind / 100.f;
+		if (CloudVectors.Contains("CloudWind")) CloudMID->SetVectorParameterValue("CloudWind", FLinearColor(Wv.X * 0.02f, Wv.Y * 0.02f, 0.f, 1.f));
+		if (CloudScalars.Contains("WindMultiplier")) CloudMID->SetScalarParameterValue("WindMultiplier", 0.5f + Env.WindMs * 0.08f);
+	}
+	if (EnvMPC) if (UMaterialParameterCollectionInstance* MI = GetWorld()->GetParameterCollectionInstance(EnvMPC))
+	{
+		const FVector Wd = Env.Wind.GetSafeNormal2D();
+		MI->SetScalarParameterValue("Wetness", Env.Wet);
+		MI->SetScalarParameterValue("Rain", Env.Rain);
+		MI->SetScalarParameterValue("WindX", Wd.X);
+		MI->SetScalarParameterValue("WindY", Wd.Y);
+		MI->SetScalarParameterValue("WindSpeed", Env.WindMs);
+		MI->SetScalarParameterValue("Puddles", Env.Wet);
+	}
 	SkyLight->SetIntensity(0.16f + Day * 0.95f + Env.Lightning * 2.f);
 	// Пост-процесс: дауылда қоңыр, ыстықта «жылу» реңкі
 	FPostProcessSettings& P = Post->Settings;

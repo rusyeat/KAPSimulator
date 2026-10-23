@@ -17,8 +17,9 @@ enum class EKAPFaction : uint8 { Civil, Worker, Militia, Guard, Bandit, Monster 
 UENUM(BlueprintType)
 enum class EMonsterKind : uint8 { Wolf, Irradiated, Worm };
 
+/** Ауа райы (жаңалары соңына қосылған — сақталған ойындар бұзылмасын): Cloudy — бұлтты күн, Thunder — найзағайлы жаңбыр (гроза), Windy — қатты жел */
 UENUM(BlueprintType)
-enum class EWeatherType : uint8 { Clear, Heat, Storm, Rain, Fog };
+enum class EWeatherType : uint8 { Clear, Heat, Storm, Rain, Fog, Cloudy, Thunder, Windy };
 
 UENUM(BlueprintType)
 enum class EQuestState : uint8 { None, Active, Done };
@@ -181,6 +182,8 @@ namespace KAP
 	KAPSIMULATOR_API FText FaultName(EFaultType F);
 	KAPSIMULATOR_API FText WellStateName(EWellState S);
 	KAPSIMULATOR_API FText WeatherName(EWeatherType W);
+	/** Жел қайдан соғады («солтүстік-батыстан»): Yaw — жел бағыты (қайда соғады), солтүстік = −Y */
+	KAPSIMULATOR_API FString WindDirName(float Yaw);
 	KAPSIMULATOR_API FName FaultTool(EFaultType F);
 	KAPSIMULATOR_API EFaultType FaultFromName(FName N);
 	KAPSIMULATOR_API FString FmtTime(double Hours);

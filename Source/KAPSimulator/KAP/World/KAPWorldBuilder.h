@@ -32,6 +32,9 @@ public:
 	AKAPStructure* SpawnStruct(int32 Type, FVector2D PosM, float YawDeg, FVector Size, FLinearColor Color, int32 Seed = 0, bool bBright = false);
 	AKAPInteractSpot* SpawnSpot(FName Action, FVector PosCm, float Radius = 230.f, bool bVisualBox = false);
 	float Z(FVector2D PosM) const;
+	/** Жол бетінің биіктігі (см): көпір үстінде — көпір төсемі */
+	float RoadZ(FVector2D PosM) const;
+	UPROPERTY() TObjectPtr<class AKAPNature> Nature;
 private:
 	void BuildRoads();
 	/** Асфальт/топырақ жол беті (процедуралық таспа); активтер жоқ болса — false */

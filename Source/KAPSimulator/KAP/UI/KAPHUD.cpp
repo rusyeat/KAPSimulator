@@ -964,7 +964,8 @@ void AKAPHUD::TabWeather(float X, float Y, float W, float H)
 	KV(TEXT("Жағдай"), KAP::WeatherName(E.Cur).ToString());
 	KV(TEXT("Температура"), FString::Printf(TEXT("%d°C"), FMath::RoundToInt32(E.Temp)));
 	KV(TEXT("Көріну"), FString::Printf(TEXT("%d м"), FMath::RoundToInt32(E.Visibility)));
-	KV(TEXT("Жел"), FString::Printf(TEXT("%d м/с"), FMath::RoundToInt32(E.Wind.Size() / 100.f)));
+	KV(TEXT("Жел"), FString::Printf(TEXT("%d м/с, %s"), FMath::RoundToInt32(E.WindMs), *KAP::WindDirName(E.WindYaw)));
+	KV(TEXT("Бұлттылық"), FString::Printf(TEXT("%d%%"), FMath::RoundToInt32(E.Cloud * 100)));
 	KV(TEXT("Жол күйі"), E.Wet > 0.2f ? FString::Printf(TEXT("батпақ (%d%%)"), FMath::RoundToInt32(E.Wet * 100)) : FString(TEXT("құрғақ")));
 	KV(TEXT("Тәулік"), E.bNight ? TEXT("түн") : TEXT("күн"));
 	Py += 14;
@@ -975,11 +976,11 @@ void AKAPHUD::TabWeather(float X, float Y, float W, float H)
 	for (const FKAPWeatherSeg& Sg : S.Weather)
 	{
 		if (Sg.Start + Sg.Dur < S.Time || Sg.Start > S.Time + 24) continue;
-		const FString Warn = Sg.Type == EWeatherType::Storm ? TEXT("! Құм дауылы — баспана табыңыз") : Sg.Type == EWeatherType::Heat ? TEXT("! Ыстық толқыны — су алыңыз") : Sg.Type == EWeatherType::Rain ? TEXT("! Найзағай — электр ақаулары") : Sg.Type == EWeatherType::Fog ? TEXT("Тұман — көріну нашар") : TEXT("");
+		const FString Warn = Sg.Type == EWeatherType::Storm ? TEXT("! Құм дауылы — баспана табыңыз") : Sg.Type == EWeatherType::Heat ? TEXT("! Ыстық толқыны — су алыңыз") : Sg.Type == EWeatherType::Thunder ? TEXT("! Найзағай — электр ақаулары, ашық далада қауіпті") : Sg.Type == EWeatherType::Rain ? TEXT("Жаңбыр — жол батпақ, көлік тайғанайды") : Sg.Type == EWeatherType::Windy ? TEXT("Қатты жел — қарсы жүру қиын") : Sg.Type == EWeatherType::Fog ? TEXT("Тұман — көріну нашар") : TEXT("");
 		Txt(PX, Yy, KAP::FmtTime(FMath::Max(S.Time, Sg.Start)), 14, Txtc);
 		Txt(PX + 80, Yy, KAP::WeatherName(Sg.Type).ToString(), 14, Txtc);
 		Txt(PX + 260, Yy, KAP::FmtDur(Sg.Start + Sg.Dur - FMath::Max(S.Time, Sg.Start)), 14, Muted);
-		Txt(PX + 400, Yy, Warn, 14, Sg.Type == EWeatherType::Storm ? CRed : Txtc);
+		Txt(PX + 400, Yy, Warn, 14, Sg.Type == EWeatherType::Storm || Sg.Type == EWeatherType::Thunder ? CRed : Txtc);
 		Yy += 26;
 	}
 }
@@ -1025,7 +1026,7 @@ void AKAPHUD::TabInv(float X, float Y, float W, float H)
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	Txt(X, Y, TEXT("Инвентарь"), 18, Amber);
 	float Yy = Y + 36;
-	static const TSet<FName> Usable = { "medkit", "bandage", "food", "water", "iodine", "antidote" };
+	static const TSet<FName> Usable = { "medkit", "bandage", "food", "water", "iodine", "antidote", "firewood" };
 	static const TSet<FName> Wearable = { "suit", "hat", "coat", "armor" };
 	D->Items->ForeachRow<FKAPItemRow>(TEXT("KAP"), [&](const FName& Id, const FKAPItemRow& R)
 	{
@@ -1174,10 +1175,10 @@ void AKAPHUD::TabSys(float X, float Y, float W, float H)
 	for (int32 i = 0; i < 4; i++) { const int32 V = TS[i]; Button(X + 260 + i * 70, Py, 64, 34, FString::Printf(TEXT("×%d"), V), [GM, V]() { GM->TimeScale = V; }, true, (int32)GM->TimeScale == V, 14); }
 	Py += 52;
 	Txt(X, Py + 8, TEXT("Ауа райын сынау (демо):"), 15, Txtc);
-	const TCHAR* WN[5] = { TEXT("Кесте бойынша"), TEXT("Құм дауылы"), TEXT("Жаңбыр"), TEXT("Тұман"), TEXT("Ыстық") };
-	const EWeatherType WT[5] = { EWeatherType::Clear, EWeatherType::Storm, EWeatherType::Rain, EWeatherType::Fog, EWeatherType::Heat };
+	const TCHAR* WN[8] = { TEXT("Кесте бойынша"), TEXT("Құм дауылы"), TEXT("Жаңбыр"), TEXT("Гроза"), TEXT("Бұлтты"), TEXT("Жел"), TEXT("Тұман"), TEXT("Ыстық") };
+	const EWeatherType WT[8] = { EWeatherType::Clear, EWeatherType::Storm, EWeatherType::Rain, EWeatherType::Thunder, EWeatherType::Cloudy, EWeatherType::Windy, EWeatherType::Fog, EWeatherType::Heat };
 	float Bx = X + 260;
-	for (int32 i = 0; i < 5; i++)
+	for (int32 i = 0; i < 8; i++)
 	{
 		const float Bw = Measure(WN[i], 14).X + 24;
 		const EWeatherType T = WT[i]; const bool bNone = i == 0;

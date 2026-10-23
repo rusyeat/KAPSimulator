@@ -1,0 +1,167 @@
+{
+  "Horse": {
+    "triangles": 14240,
+    "bones": 25,
+    "heat_weights": true,
+    "anims": {
+      "Idle": {
+        "frames": 120,
+        "seconds": 4.0,
+        "speed": 0.0
+      },
+      "Walk": {
+        "frames": 40,
+        "seconds": 1.3333333333333333,
+        "speed": 0.8640645798253668
+      },
+      "Trot": {
+        "frames": 26,
+        "seconds": 0.8666666666666667,
+        "speed": 2.5481032709935216
+      },
+      "Gallop": {
+        "frames": 20,
+        "seconds": 0.6666666666666666,
+        "speed": 5.381217351312715
+      },
+      "Graze": {
+        "frames": 90,
+        "seconds": 3.0,
+        "speed": 0.0
+      }
+    },
+    "height": 1.42,
+    "length": 2.35
+  },
+  "Cow": {
+    "triangles": 14238,
+    "bones": 25,
+    "heat_weights": true,
+    "anims": {
+      "Idle": {
+        "frames": 120,
+        "seconds": 4.0,
+        "speed": 0.0
+      },
+      "Walk": {
+        "frames": 44,
+        "seconds": 1.4666666666666666,
+        "speed": 0.5815284936314947
+      },
+      "Trot": {
+        "frames": 28,
+        "seconds": 0.9333333333333333,
+        "speed": 1.7605747809264083
+      },
+      "Gallop": {
+        "frames": 22,
+        "seconds": 0.7333333333333333,
+        "speed": 3.67571264532889
+      },
+      "Graze": {
+        "frames": 90,
+        "seconds": 3.0,
+        "speed": 0.0
+      }
+    },
+    "height": 1.3,
+    "length": 2.3
+  },
+  "Goat": {
+    "triangles": 10240,
+    "bones": 25,
+    "heat_weights": true,
+    "anims": {
+      "Idle": {
+        "frames": 120,
+        "seconds": 4.0,
+        "speed": 0.0
+      },
+      "Walk": {
+        "frames": 30,
+        "seconds": 1.0,
+        "speed": 0.5327600423069783
+      },
+      "Trot": {
+        "frames": 20,
+        "seconds": 0.6666666666666666,
+        "speed": 1.5341617235334497
+      },
+      "Gallop": {
+        "frames": 15,
+        "seconds": 0.5,
+        "speed": 3.332785689214399
+      },
+      "Graze": {
+        "frames": 90,
+        "seconds": 3.0,
+        "speed": 0.0
+      }
+    },
+    "height": 0.7,
+    "length": 1.15
+  },
+  "Sheep": {
+    "triangles": 10240,
+    "bones": 25,
+    "heat_weights": true,
+    "anims": {
+      "Idle": {
+        "frames": 120,
+        "seconds": 4.0,
+        "speed": 0.0
+      },
+      "Walk": {
+        "frames": 30,
+        "seconds": 1.0,
+        "speed": 0.4483490241682963
+      },
+      "Trot": {
+        "frames": 20,
+        "seconds": 0.6666666666666666,
+        "speed": 1.2929816915161518
+      },
+      "Gallop": {
+        "frames": 16,
+        "seconds": 0.5333333333333333,
+        "speed": 2.6407195011224047
+      },
+      "Graze": {
+        "frames": 90,
+        "seconds": 3.0,
+        "speed": 0.0
+      }
+    },
+    "height": 0.8,
+    "length": 1.2
+  },
+  "Fox": {
+    "triangles": 8240,
+    "bones": 25,
+    "heat_weights": true,
+    "anims": {
+      "Idle": {
+        "frames": 120,
+        "seconds": 4.0,
+        "speed": 0.0
+      },
+      "Walk": {
+        "frames": 22,
+        "seconds": 0.7333333333333333,
+        "speed": 0.44728610801611446
+      },
+      "Trot": {
+        "frames": 14,
+        "seconds": 0.4666666666666667,
+        "speed": 1.344052874393124
+      },
+      "Gallop": {
+        "frames": 11,
+        "seconds": 0.36666666666666664,
+        "speed": 2.765994438899652
+      }
+    },
+    "height": 0.38,
+    "length": 1.15
+  }
+}

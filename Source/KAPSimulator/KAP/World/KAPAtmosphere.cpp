@@ -1,5 +1,7 @@
 ﻿#include "KAPAtmosphere.h"
 #include "KAPVisuals.h"
+#include "KAPNature.h"
+#include "KAPTerrain.h"
 #include "KAPFXManager.h"
 #include "KAP/Audio/KAPAudio.h"
 #include "WeatherManager.h"
@@ -221,10 +223,28 @@ void AKAPAtmosphere::UpdateTracks(float Dt)
 			int32 Surf = UKAPAudio::SurfaceOf(P->GetCharacterMovement()->CurrentFloor.HitResult.GetComponent());
 			const bool bSand = Surf == 0;
 			if (bSand && GM && GM->DistToRoad(FVector2D(Pos) / 100.0) < 3.5) Surf = 4; // топырақ жол (қабатының соқтығысы жоқ, астында ландшафт)
+			// ландшафт биомы: суда — шалп (шашырау), батпақта — лай, шөпті далада — топырақ қадамы; құм тек құм төбелерде
+			bool bWaterStep = false;
+			if (bSand)
+			{
+				float Wz, Wd;
+				const FVector2D Pm = FVector2D(Pos) / 100.0;
+				if (AKAPNature::WaterAt(GetWorld(), Pos + FVector(0, 0, 10), Wz, Wd))
+				{
+					bWaterStep = true;
+					if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) for (int32 k = 0; k < 4; k++) FX->Spawn(EKAPFX::Splash, FVector(Pos.X, Pos.Y, Wz + 5.f) + Side, 0.7f, P->GetVelocity() * 0.3f);
+					if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Impact(FVector(Pos.X, Pos.Y, Wz), 3, FMath::Clamp(0.35f + Wd, 0.35f, 0.9f));
+				}
+				else if (KAPTerrain::DuneMask(Pm.X, Pm.Y) < 0.4f)
+				{
+					Surf = 4;
+					if (AKAPNature::MudAt(GetWorld(), Pm) > 0.5f) if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Mud, Pos + Side + FVector(0, 0, 4), 0.5f, P->GetVelocity() * 0.15f);
+				}
+			}
 			{ static uint32 Seen = 0; if (!(Seen & (1u << Surf))) { Seen |= 1u << Surf; UE_LOG(LogTemp, Display, TEXT("KAPTEST step surface=%d"), Surf); } }
 			if (bSand) StampTrack(FVector(Pos.X, Pos.Y, KAPVis::GroundZ(GetWorld(), Pos.X, Pos.Y, Pos.Z)) + Side, Yaw, FVector(30, 7, 15), false);
 			const bool bRun = P->GetVelocity().Size2D() > 500;
-			if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Footstep(Pos, Surf, bRun ? 0.6f : 0.42f, bRun);
+			if (!bWaterStep) if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Footstep(Pos, Surf, bRun ? 0.6f : 0.42f, bRun);
 		}
 	}
 	// дөңгелек іздері (барлық қозғалыстағы көліктер)

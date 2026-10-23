@@ -41,7 +41,15 @@ public:
 	bool bLightsForced = false;
 	/** Көлікті сенімді түрде жаңа орынға қою: физика өшіріліп-қосылады (Chaos денесі ескі орнына қайтпауы үшін), жылдамдық нөл */
 	void PlaceAt(FVector At, float Yaw);
+	/** Жел күші (Н) — HUD/тест үшін */
+	float WindForceN = 0.f;
+	/** Дөңгелек астындағы батпақ (0..1) */
+	float MudK = 0.f;
 private:
+	/** Жел, батпақ, су, шашырау (KAPVehicleEnv.cpp) */
+	void EnvTick(float Dt);
+	TArray<float> BaseFriction;
+	float GripApplied = 1.f, SplashAcc = 0.f, SplashSndCd = 0.f;
 	/** Қауіпсіздік: аударылса — дөңгелегіне, жер астына түссе — соңғы қауіпсіз орнына (KeepSafe) */
 	void KeepSafe(float Dt);
 	FTransform LastGoodXf = FTransform(FVector::ZeroVector);

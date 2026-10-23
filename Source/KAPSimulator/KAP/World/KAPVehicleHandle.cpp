@@ -192,14 +192,8 @@ void AKAPVehicleHandle::Tick(float Dt)
 	const AWeatherManager* WX = AWeatherManager::Get(GetWorld());
 	const float Storm = WX ? WX->Env.Storm : 0.f;
 	const float V = Pawn->GetVelocity().Size() / 100.f; // м/с
-	// жел физикасы: бүйірлік итеру + қарсы кедергі (дауылда жылдамдық 20–35% төмендейді)
-	if (Storm > 0.05f && Pawn->GetMesh()->IsSimulatingPhysics())
-	{
-		const FVector Wd = WX->Env.Wind.GetSafeNormal2D();
-		const FVector Vel = Pawn->GetVelocity();
-		const float Gust = 0.75f + 0.5f * FMath::PerlinNoise1D(GetWorld()->GetTimeSeconds() * 0.6f + (GetTypeHash(Id) % 97) * 0.37f);
-		Pawn->GetMesh()->AddForce(Wd * Storm * 160.f * Gust - Vel * Storm * 0.12f, NAME_None, true);
-	}
+	// жел, батпақ, су (KAPVehicleEnv.cpp)
+	EnvTick(Dt);
 	// қозғалтқыш қызуы: газ + ыстық + дауыл (шаң сүзгіні бітейді) − ауа ағынымен салқындау
 	const float Thr = Mov ? FMath::Abs(Mov->GetThrottleInput()) : 0.f;
 	const float Temp = WX ? WX->Env.Temp : 30.f;

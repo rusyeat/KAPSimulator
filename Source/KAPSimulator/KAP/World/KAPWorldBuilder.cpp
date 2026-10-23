@@ -1,6 +1,10 @@
 ﻿#include "KAPWorldBuilder.h"
 #include "KAPStructure.h"
 #include "KAPVisuals.h"
+#include "KAPNature.h"
+#include "KAP/NPC/KAPAnimal.h"
+#include "KAP/NPC/KAPLife.h"
+#include "KAPTerrain.h"
 #include "WellActor.h"
 #include "WellManagerSubsystem.h"
 #include "KAPVehicleHandle.h"
@@ -19,6 +23,7 @@ AKAPWorldBuilder::AKAPWorldBuilder()
 }
 
 float AKAPWorldBuilder::Z(FVector2D P) const { return KAPVis::GroundZ(GetWorld(), P.X * 100.f, P.Y * 100.f, 0.f); }
+float AKAPWorldBuilder::RoadZ(FVector2D P) const { const float G = Z(P); return Nature ? Nature->DeckZ(P, G) : G; }
 
 AKAPStructure* AKAPWorldBuilder::SpawnStruct(int32 Type, FVector2D P, float Yaw, FVector Size, FLinearColor Color, int32 Seed, bool bBright)
 {
@@ -259,6 +264,9 @@ void AKAPWorldBuilder::BuildAll()
 	}
 	// ---- мутант ұялары ----
 	for (const TCHAR* Id : { TEXT("nest1"), TEXT("nest2"), TEXT("nest3"), TEXT("nest4") }) SpawnStruct((int32)EStructType::Nest, L(Id), 0, FVector(1), FLinearColor::White, FCString::Strlen(Id) * 13);
+	// табиғат: көпір аралықтары жолдан бұрын (жол таспасы көпір үстімен өтеді)
+	Nature = GetWorld()->SpawnActor<AKAPNature>();
+	if (Nature) Nature->PlanBridges(UKAPDataSubsystem::Get(this), [this](FVector2D P) { return Z(P); });
 	BuildRoads();
 	ClearRoadOverlaps(); // тексеріс: жолда ғимарат қалмағанын логқа жазады
 	BuildVegetation();
@@ -319,7 +327,7 @@ bool AKAPWorldBuilder::BuildRoadSurfaces()
 			for (int32 i = 0; i < 9; i++)
 			{
 				const FVector2D Q = C + Lft * Xs[i];
-				P.Add(FVector(Q.X * 100.0, Q.Y * 100.0, Z(Q) + Zs[i] * K + Bias));
+				P.Add(FVector(Q.X * 100.0, Q.Y * 100.0, RoadZ(Q) + Zs[i] * K + Bias));
 				UV.Add(FVector2D(0.5 + Xs[i] / Wm, (S + VOff) / Lm));
 				VC.Add(FLinearColor(1, 1, 1, Al));
 			}
@@ -414,7 +422,8 @@ void AKAPWorldBuilder::BuildRoads()
 	for (int32 i = 0; i <= 10; i++) { NoPole.Add(FMath::Lerp(FVector2D(-830, 762), FVector2D(-995, 818), i / 10.0)); NoPoleR.Add(14); }
 	TArray<FBox2D> NoPoleBox;
 	for (KAPReg::TIter<AKAPStructure> It(GetWorld(), KAPReg::Structures()); It; ++It) for (const FBox2D& Bx : It->IndoorBoxes) NoPoleBox.Add(Bx.ExpandBy(600.0));
-	auto PoleOk = [&](FVector2D P) { for (int32 i = 0; i < NoPole.Num(); i++) if (FVector2D::Distance(P, NoPole[i]) < NoPoleR[i]) return false; for (const FBox2D& Bx : NoPoleBox) if (Bx.IsInside(P * 100.0)) return false; return true; };
+	auto WetP = [](FVector2D P) { float Hw; return KAPTerrain::ChannelDist(P.X, P.Y, Hw) < Hw * 1.6f + 3.f || KAPTerrain::LakeDist(P.X, P.Y) < KAPTerrain::LakeR + 12.f || KAPTerrain::OasisDist(P.X, P.Y) < KAPTerrain::OasisR + 6.f; };
+	auto PoleOk = [&](FVector2D P) { if (WetP(P)) return false; for (int32 i = 0; i < NoPole.Num(); i++) if (FVector2D::Distance(P, NoPole[i]) < NoPoleR[i]) return false; for (const FBox2D& Bx : NoPoleBox) if (Bx.IsInside(P * 100.0)) return false; return true; };
 	for (int32 e = 0; e < D->Graph.Edges.Num(); e++)
 	{
 		if ((e % 3) == 2) continue; // барлық жолда емес
@@ -490,6 +499,8 @@ void AKAPWorldBuilder::BuildRoads()
 
 void AKAPWorldBuilder::BuildVegetation()
 {
+	// шөп пен егін — ландшафт материалының шөп түрлері (GPU), сексеуіл, ағаштар, су, таулар — AKAPNature.
+	// Мұнда тек далаға шашылған тастар қалды (судан, егістен, жолдан аулақ).
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
 	FRandomStream R(42);
 	auto MakeH = [&](EKAPShape S, FKAPMat M, bool bCol, float Cull)
@@ -505,15 +516,15 @@ void AKAPWorldBuilder::BuildVegetation()
 	};
 	FKAPMat RockM = FKAPMat::Concrete(FLinearColor(0.42f, 0.34f, 0.26f)); RockM.Panel = 0.f; RockM.DustTop = 1.f;
 	Rocks = MakeH(EKAPShape::Rock, RockM, true, 80000);
-	Bushes = MakeH(EKAPShape::Bush, FKAPMat::Paint(FLinearColor(0.22f, 0.2f, 0.1f), 0.9f), false, 60000);
-	Grass = MakeH(EKAPShape::Bush, FKAPMat::Paint(FLinearColor(0.45f, 0.38f, 0.22f), 0.95f), false, 9000);
 	TArray<FVector2D> Avoid; TArray<float> AvoidR;
 	D->Locations->ForeachRow<FKAPLocationRow>(TEXT("KAP"), [&](const FName&, const FKAPLocationRow& L) { Avoid.Add(FVector2D(L.X, L.Y)); AvoidR.Add(L.R + 8); });
 	D->Wells->ForeachRow<FKAPWellRow>(TEXT("KAP"), [&](const FName&, const FKAPWellRow& W) { Avoid.Add(FVector2D(W.X, W.Y)); AvoidR.Add(14); });
 	auto Bad = [&](FVector2D P)
 	{
 		for (int32 i = 0; i < Avoid.Num(); i++) if (FVector2D::Distance(P, Avoid[i]) < AvoidR[i]) return true;
-		return false;
+		float Hw;
+		if (KAPTerrain::ChannelDist(P.X, P.Y, Hw) < Hw * 1.6f + 3.f || KAPTerrain::LakeDist(P.X, P.Y) < KAPTerrain::LakeR + 10.f || KAPTerrain::OasisDist(P.X, P.Y) < KAPTerrain::OasisR + 5.f) return true;
+		return KAPTerrain::FieldMask(P.X, P.Y) > 0.f || KAPTerrain::WetMask(P.X, P.Y) > 0.3f;
 	};
 	auto NearRoad = [&](FVector2D P)
 	{
@@ -526,32 +537,19 @@ void AKAPWorldBuilder::BuildVegetation()
 		}
 		return Best;
 	};
+	// табиғат актері: егістік картасы (FieldMask) осында құрылады — тастардан бұрын
+	if (Nature) Nature->Build(this);
+	// жануарлар (табындар, түлкі, түнгі қасқырлар) және ауыл адамдарының күн тәртібі
+	GetWorld()->SpawnActor<AKAPFauna>();
+	GetWorld()->SpawnActor<AKAPLife>();
 	int32 Placed = 0, Tries = 0;
-	while (Placed < 2400 && Tries++ < 20000)
-	{
-		const FVector2D P(R.FRandRange(-1150, 1150), R.FRandRange(-1150, 1150));
-		if (Bad(P) || NearRoad(P) < 7) continue;
-		const float S = R.FRandRange(0.6f, 2.0f);
-		Bushes->AddInstance(FTransform(FRotator(R.FRandRange(-5, 5), R.FRandRange(0, 360), R.FRandRange(-5, 5)), FVector(P.X * 100, P.Y * 100, Z(P) - 10), FVector(S, S, S * R.FRandRange(0.8f, 1.2f))));
-		Placed++;
-	}
-	Placed = 0; Tries = 0;
 	while (Placed < 650 && Tries++ < 8000)
 	{
-		const FVector2D P(R.FRandRange(-1150, 1150), R.FRandRange(-1150, 1150));
+		const FVector2D P(R.FRandRange(-1140, 1140), R.FRandRange(-1140, 1140));
 		if (Bad(P) || NearRoad(P) < 6) continue;
 		const bool bBig = R.FRand() < 0.3f;
 		const float S = bBig ? R.FRandRange(1.6f, 3.8f) : R.FRandRange(0.3f, 1.0f);
 		Rocks->AddInstance(FTransform(FRotator(R.FRandRange(-20, 20), R.FRandRange(0, 360), R.FRandRange(-20, 20)), FVector(P.X * 100, P.Y * 100, Z(P) - S * 25), FVector(S * R.FRandRange(0.9f, 1.5f), S, S * 0.75f)));
-		Placed++;
-	}
-	Placed = 0; Tries = 0;
-	while (Placed < 9000 && Tries++ < 30000)
-	{
-		const FVector2D P(R.FRandRange(-1150, 1150), R.FRandRange(-1150, 1150));
-		if (Bad(P)) continue;
-		const float S = R.FRandRange(0.15f, 0.35f);
-		Grass->AddInstance(FTransform(FRotator(0, R.FRandRange(0, 360), 0), FVector(P.X * 100, P.Y * 100, Z(P) - 5), FVector(S * 1.6f, S * 1.6f, S)));
 		Placed++;
 	}
 }

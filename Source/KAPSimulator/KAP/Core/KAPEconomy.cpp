@@ -112,7 +112,7 @@ const TArray<AKAPGameMode::FShopItem>& AKAPGameMode::ShopItems()
 {
 	static const TArray<FShopItem> L = {
 		// 0 — қару
-		{ "knife", 300, 1, 0, false }, { "crowbar", 450, 1, 0, false }, { "flaregun", 900, 1, 0, true }, { "pm", 1800, 1, 0, true },
+		{ "knife", 300, 1, 0, false }, { "crowbar", 450, 1, 0, false }, { "axe", 350, 1, 0, false }, { "flaregun", 900, 1, 0, true }, { "pm", 1800, 1, 0, true },
 		{ "shotgun", 3200, 1, 0, true }, { "ak", 7500, 1, 0, true }, { "sniper", 11000, 1, 0, true }, { "molotov", 150, 1, 0, true }, { "flare", 60, 1, 0, false },
 		// 1 — оқ-дәрі (буда)
 		{ "9mm", 150, 16, 1, true }, { "12g", 180, 8, 1, true }, { "545", 360, 30, 1, true }, { "762", 420, 10, 1, true }, { "flare_ammo", 120, 3, 1, false },
@@ -167,10 +167,11 @@ void AKAPGameMode::Buy(const FShopItem& It, FName Kind)
 void AKAPGameMode::SellScrap()
 {
 	FKAPSession& Ss = S();
-	const int32 N = Ss.Inv.FindRef("scrap");
-	if (N <= 0) { Toast(TEXT("Сататын сынық жоқ"), "warn"); return; }
-	Ss.Inv.Remove("scrap");
-	AddMoney(N * 70, FString::Printf(TEXT("%d металл сынығы сатылды"), N));
+	const int32 N = Ss.Inv.FindRef("scrap"), Fw = Ss.Inv.FindRef("firewood");
+	if (N <= 0 && Fw <= 0) { Toast(TEXT("Сататын сынық жоқ"), "warn"); return; }
+	Ss.Inv.Remove("scrap"); Ss.Inv.Remove("firewood");
+	if (N > 0) AddMoney(N * 70, FString::Printf(TEXT("%d металл сынығы сатылды"), N));
+	if (Fw > 0) AddMoney(Fw * 35, FString::Printf(TEXT("%d бума сексеуіл отыны сатылды"), Fw));
 }
 
 // =====================================================================
@@ -573,7 +574,7 @@ bool AKAPGameMode::EconomyTalk(AKAPNPC* N)
 		RefreshContracts(false);
 		Dialog(N->DisplayName, TEXT("Ассалаумағалейкум! Қару, оқ-дәрі, дәрі-дәрмек — бәрі бар. Сынық металл әкелсең, сатып аламын. Жүк тасуға адам да керек."),
 			{ { TEXT("Дүкен"), [H]() { H->ShowShop("trader"); }, false }, { TEXT("Жұмыс бар ма?"), [H]() { H->ShowJobs("trader"); }, false },
-			  { FString::Printf(TEXT("Сынық сату (%d дана)"), Ss.Inv.FindRef("scrap")), [this]() { SellScrap(); }, Ss.Inv.FindRef("scrap") <= 0 }, { TEXT("Сау болыңыз"), nullptr, false } });
+			  { FString::Printf(TEXT("Сынық пен отын сату (%d + %d)"), Ss.Inv.FindRef("scrap"), Ss.Inv.FindRef("firewood")), [this]() { SellScrap(); }, Ss.Inv.FindRef("scrap") + Ss.Inv.FindRef("firewood") <= 0 }, { TEXT("Сау болыңыз"), nullptr, false } });
 		return true;
 	}
 	if (T == "army")

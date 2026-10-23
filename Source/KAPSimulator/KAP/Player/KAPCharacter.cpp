@@ -16,6 +16,7 @@
 #include "KAP/World/WellManagerSubsystem.h"
 #include "KAP/World/KAPProjectile.h"
 #include "KAP/World/KAPStructure.h"
+#include "KAP/World/KAPWorldBuilder.h"
 #include "KAP/Audio/KAPAudio.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SpotLightComponent.h"
@@ -25,6 +26,8 @@
 #include "Engine/DamageEvents.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
+#include "KAP/World/KAPNature.h"
+#include "KAP/NPC/KAPAnimal.h"
 
 AKAPCharacter* AKAPCharacter::Get(const UObject* WorldContext)
 {
@@ -238,6 +241,16 @@ void AKAPCharacter::BuildHeld(FName Id)
 		B(FVector(-6, 0, 0.6f), FVector(8, 2.6f, 1.0f), Gun, FRotator(-10, 0, 0));
 		B(FVector(4, 0, 0), FVector(12, 2.6f, 2.6f), Rubber);
 	}
+	else if (Id == "axe")
+	{
+		// балта: ағаш сап (сәл иілген), темір басы, жүзі жылтыр, сыналы
+		const FKAPMat Handle = FKAPMat::Paint(FLinearColor(0.42f, 0.28f, 0.15f), 0.75f);
+		for (int32 i = 0; i < 4; i++) B(FVector(6 + i * 13.f, 0, -0.6f + FMath::Sin(i * 0.9f) * 0.8f), FVector(13.5f, 2.6f, 3.2f - i * 0.15f), Handle, FRotator(-2 + i * 1.5f, 0, 0));
+		B(FVector(55, 0, 2.0f), FVector(7, 3.4f, 9.5f), Gun);
+		B(FVector(55.5f, 0, 9.5f), FVector(9.5f, 1.4f, 6.5f), Gun, FRotator(0, 0, 0));
+		B(FVector(55.5f, 0, 13.4f), FVector(11, 0.5f, 1.6f), Chrome);
+		B(FVector(55, 0, -3.8f), FVector(5.5f, 3.6f, 3.0f), Gun);
+	}
 	else if (Id == "flare")
 	{
 		// сигнал шамы: қызыл түтік, қақпақ, жарқыраған ұшы
@@ -382,11 +395,14 @@ void AKAPCharacter::DoFire()
 	if (W->Kind == "melee")
 	{
 		SwingT = 0.25f;
-		UKAPAudio::Get(this)->Whoosh(GI->S.Equipped == "crowbar");
+		UKAPAudio::Get(this)->Whoosh(GI->S.Equipped == "crowbar" || GI->S.Equipped == "axe");
 		SetAttr(UKAPSurvivalAttributeSet::GetStaminaAttribute(), GetStamina() - 4);
 		FHitResult H;
 		if (GetWorld()->SweepSingleByChannel(H, O, O + Dir * W->Range * 100.f, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeSphere(25.f), Q))
 			if (AKAPNPC* N = Cast<AKAPNPC>(H.GetActor())) { N->SetHitImpulse(Dir * 700.f, FName("spine_03"), false); UGameplayStatics::ApplyDamage(N, W->Damage, GetController(), this, nullptr); UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.9f); }
+				else if (AKAPAnimal* An = Cast<AKAPAnimal>(H.GetActor())) { UGameplayStatics::ApplyDamage(An, W->Damage, GetController(), this, nullptr); UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.9f); }
+		// адамға тимесе — сексеуіл: балтамен шабылады (басқа құралмен — баяу)
+		if (!Cast<AKAPNPC>(H.GetActor()) && !Cast<AKAPAnimal>(H.GetActor())) if (AKAPNature* Nat = AKAPNature::Get(GetWorld())) if (Nat->MeleeHit(O, Dir, W->Range * 100.f, W->Damage, GI->S.Equipped == "axe")) { bFiring = false; return; }
 		// қабырға/металға тиді ме — беттің түріне қарай соққы дыбысы
 		FHitResult Hw;
 		if (!H.GetActor() && GetWorld()->LineTraceSingleByChannel(Hw, O, O + Dir * W->Range * 100.f, ECC_Visibility, Q))
@@ -434,6 +450,11 @@ void AKAPCharacter::DoFire()
 				UGameplayStatics::ApplyDamage(N, W->Damage * (bHead ? 2.2f : 1.f), GetController(), this, nullptr);
 				UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.8f);
 			}
+			else if (AKAPAnimal* An = Cast<AKAPAnimal>(H.GetActor()))
+			{
+				UGameplayStatics::ApplyDamage(An, W->Damage, GetController(), this, nullptr);
+				UKAPAudio::Get(this)->Impact(H.ImpactPoint, 0, 0.8f);
+			}
 			else
 			{
 				const bool bMetal = H.GetComponent() && H.GetComponent()->ComponentHasTag("SurfMetal");
@@ -463,6 +484,15 @@ void AKAPCharacter::UseItem(FName Id)
 	else if (Id == "water") SetAttr(UKAPSurvivalAttributeSet::GetWaterAttribute(), GetWater() + 45);
 	else if (Id == "iodine") GI->S.IodineUntil = GI->S.Time + 6;
 	else if (Id == "antidote") SetAttr(UKAPSurvivalAttributeSet::GetDoseAttribute(), GetDose() - 120);
+	else if (Id == "firewood")
+	{
+		// сексеуіл отыны: алдыңа от жағу (2 бума) — 4 минут жанады, жылытады
+		if (*N < 2) { GM->Toast(TEXT("От жағуға кемінде 2 бума отын керек"), "warn"); return; }
+		if (bIndoor) { GM->Toast(TEXT("Үй ішінде от жағуға болмайды"), "warn"); return; }
+		const FVector At = GetActorLocation() + FRotator(0, GetControlRotation().Yaw, 0).Vector() * 160.f;
+		if (GM->Builder) if (AKAPStructure* F = GM->Builder->SpawnStruct((int32)EStructType::Campfire, FVector2D(At.X, At.Y) / 100.0, 0.f, FVector(1), FLinearColor::White)) F->SetLifeSpan(240.f);
+		(*N)--;
+	}
 	else return;
 	(*N)--;
 	UKAPAudio::Get(this)->Play(EKAPSound::Pickup, 0.6f);
@@ -612,7 +642,21 @@ void AKAPCharacter::UpdateSurvival(float Dt, double Dh)
 	if (GetWater() < 20) Sp *= 0.75f;
 	if (GetTemp() < 35) Sp *= 0.8f;
 	if (E.Storm > 0.5f && !bIndoor) Sp *= 0.85f;
-	if (E.Wet > 0.3f && GM->DistToRoad(KAP::CM2M(P)) > 6) Sp *= 0.85f;
+	// батпақ (жаңбырдан кейін, өзен жағасында) және су: аяқ батады
+	if (!bIndoor)
+	{
+		float Wz = 0.f, Wd = 0.f;
+		if (AKAPNature::WaterAt(GetWorld(), P - FVector(0, 0, 88), Wz, Wd)) Sp *= FMath::Clamp(1.f - Wd * 0.6f, 0.3f, 1.f);
+		else if (GM->DistToRoad(KAP::CM2M(P)) > 6) { const float Mud = AKAPNature::MudAt(GetWorld(), KAP::CM2M(P)); if (Mud > 0.3f) Sp *= 1.f - (Mud - 0.3f) * 0.3f; }
+	}
+	// жел: қарсы жүрсе баяулайды, желмен бірге — жылдамдайды (10 м/с жел ≈ ±0.9 м/с)
+	if (!bIndoor && !MoveVec.IsNearlyZero())
+	{
+		const FRotator Yw(0, GetControlRotation().Yaw, 0);
+		const FVector Md = (FRotationMatrix(Yw).GetUnitAxis(EAxis::X) * MoveVec.Y + FRotationMatrix(Yw).GetUnitAxis(EAxis::Y) * MoveVec.X).GetSafeNormal2D();
+		const float Along = FVector::DotProduct(Md, E.Wind / 100.f);
+		Sp = FMath::Max(Sp * 0.35f, Sp + Along * 9.f);
+	}
 	if (GetHp() < 20) Sp *= 0.8f;
 	GetCharacterMovement()->MaxWalkSpeed = Sp;
 	if (!MoveVec.IsNearlyZero())

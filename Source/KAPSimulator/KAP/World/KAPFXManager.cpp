@@ -19,7 +19,7 @@ AKAPFXManager* AKAPFXManager::Get(UWorld* W)
 
 void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 {
-	if (Pool.Num() < 400)
+	if (Pool.Num() < 600)
 	{
 		FP P;
 		P.C = NewObject<UStaticMeshComponent>(this);
@@ -36,7 +36,7 @@ void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 	}
 	else Next = (Next + 1) % Pool.Num();
 	FP& P = Pool[Next];
-	struct FDef { FLinearColor C; float Life, Size, Grow, Vz, Op, Spread; bool bEmit; };
+	struct FDef { FLinearColor C; float Life, Size, Grow, Vz, Op, Spread; bool bEmit; float Grav = 0.f; };
 	static const FDef Defs[] = {
 		{ FLinearColor(0.07f, 0.06f, 0.05f), 5.f, 220, 180, 220, 0.6f, 60, false },
 		{ FLinearColor(0.55f, 0.8f, 0.15f), 3.5f, 140, 110, 70, 0.4f, 80, true },
@@ -47,10 +47,16 @@ void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 		{ FLinearColor(0.4f, 1.f, 0.1f), 0.6f, 30, 20, 100, 0.9f, 140, true },
 		{ FLinearColor(1.f, 0.85f, 0.4f), 0.07f, 35, 0, 0, 1.f, 0, true },
 		{ FLinearColor(1.f, 0.15f, 0.08f), 0.45f, 45, -50, 60, 1.f, 20, true },
+		// лай (дөңгелектен ұшады, түседі), су шашырауы, ағаш жаңқасы, жаңбыр тамшысының шашырауы
+		{ FLinearColor(0.12f, 0.085f, 0.055f), 1.1f, 9, 2, 380, 0.97f, 160, false, 980.f },
+		{ FLinearColor(0.7f, 0.74f, 0.75f), 0.8f, 10, 14, 420, 0.45f, 150, false, 980.f },
+		{ FLinearColor(0.5f, 0.42f, 0.3f), 1.2f, 4, 0, 300, 1.f, 200, false, 980.f },
+		{ FLinearColor(0.75f, 0.78f, 0.8f), 0.25f, 3, 8, 120, 0.35f, 40, false, 980.f },
 	};
 	const FDef& D = Defs[(int32)Type];
 	P.bAlive = true; P.T = 0; P.Life = D.Life * FMath::FRandRange(0.7f, 1.3f);
-	P.Size = D.Size * Size; P.Grow = D.Grow * Size; P.Op = D.Op; P.Col = D.C;
+	P.Size = D.Size * Size; P.Grow = D.Grow * Size; P.Op = D.Op; P.Col = D.C; P.Grav = D.Grav;
+	P.Floor = D.Grav > 0.f ? KAPVis::GroundZ(GetWorld(), Pos.X, Pos.Y, Pos.Z - 300.f) + 2.f : -1e9f;
 	P.V = Vel + FVector(FMath::FRandRange(-D.Spread, D.Spread), FMath::FRandRange(-D.Spread, D.Spread), D.Vz * FMath::FRandRange(0.7f, 1.3f));
 	P.C->SetWorldLocation(Pos);
 	P.C->SetWorldScale3D(FVector(P.Size / 100.f));
@@ -68,7 +74,9 @@ void AKAPFXManager::Tick(float Dt)
 		if (!P.bAlive) continue;
 		P.T += Dt;
 		if (P.T >= P.Life) { P.bAlive = false; P.C->SetVisibility(false); continue; }
-		P.C->AddWorldOffset((P.V + Wind * 0.4f) * Dt);
+		P.V.Z -= P.Grav * Dt;
+		if (P.C->GetComponentLocation().Z < P.Floor && P.V.Z < 0.f) { P.V = FVector::ZeroVector; P.Grav = 0.f; P.Grow = -P.Size * 0.8f; } // жерге түсті
+		P.C->AddWorldOffset((P.V + Wind * (P.Grav > 0.f ? 0.1f : 0.4f)) * Dt);
 		const float S = FMath::Max(5.f, P.Size + P.Grow * P.T);
 		P.C->SetWorldScale3D(FVector(S / 100.f));
 		P.M->SetScalarParameterValue("Opacity", P.Op * (1.f - P.T / P.Life));

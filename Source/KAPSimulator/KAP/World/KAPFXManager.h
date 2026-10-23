@@ -9,7 +9,7 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 
 UENUM()
-enum class EKAPFX : uint8 { Smoke, Toxic, Fire, Steam, Dust, Blood, Green, Flash, Flare };
+enum class EKAPFX : uint8 { Smoke, Toxic, Fire, Steam, Dust, Blood, Green, Flash, Flare, Mud, Splash, Wood, Rain };
 
 UCLASS()
 class KAPSIMULATOR_API AKAPFXManager : public AActor
@@ -22,7 +22,7 @@ public:
 	static AKAPFXManager* Get(UWorld* W);
 	FVector Wind = FVector(200, 50, 0);
 private:
-	struct FP { UStaticMeshComponent* C = nullptr; UMaterialInstanceDynamic* M = nullptr; float T = 0, Life = 1, Size = 1, Grow = 0, Op = 1; FVector V; FLinearColor Col; bool bAlive = false; };
+	struct FP { UStaticMeshComponent* C = nullptr; UMaterialInstanceDynamic* M = nullptr; float T = 0, Life = 1, Size = 1, Grow = 0, Op = 1, Grav = 0, Floor = -1e9f; FVector V; FLinearColor Col; bool bAlive = false; };
 	TArray<FP> Pool;
 	int32 Next = 0;
 };

@@ -36,10 +36,19 @@ namespace KAP
 		{
 		case EWeatherType::Heat: return FText::FromString(TEXT("Ыстық толқыны"));
 		case EWeatherType::Storm: return FText::FromString(TEXT("Құм дауылы"));
-		case EWeatherType::Rain: return FText::FromString(TEXT("Найзағайлы жаңбыр"));
+		case EWeatherType::Rain: return FText::FromString(TEXT("Жаңбыр"));
+		case EWeatherType::Thunder: return FText::FromString(TEXT("Найзағайлы жаңбыр"));
+		case EWeatherType::Cloudy: return FText::FromString(TEXT("Бұлтты күн"));
+		case EWeatherType::Windy: return FText::FromString(TEXT("Қатты жел"));
 		case EWeatherType::Fog: return FText::FromString(TEXT("Тұман"));
 		default: return FText::FromString(TEXT("Ашық күн"));
 		}
+	}
+	FString WindDirName(float Yaw)
+	{
+		static const TCHAR* N[8] = { TEXT("солтүстіктен"), TEXT("солтүстік-шығыстан"), TEXT("шығыстан"), TEXT("оңтүстік-шығыстан"), TEXT("оңтүстіктен"), TEXT("оңтүстік-батыстан"), TEXT("батыстан"), TEXT("солтүстік-батыстан") };
+		const float Bearing = FMath::Fmod(Yaw + 270.f + 720.f, 360.f);
+		return N[FMath::RoundToInt32(Bearing / 45.f) % 8];
 	}
 	FName FaultTool(EFaultType F)
 	{

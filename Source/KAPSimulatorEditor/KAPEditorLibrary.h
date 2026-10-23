@@ -45,4 +45,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool SpawnLevelActors();
 	/** Мынаны толық орындайды: материалдар, мештер, кестелер, жаңа деңгей, ландшафт, актерлер, сақтау */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildEverything(const FString& MapPath);
+	// ---- жаңа жер бедері (KAPTerrainGen.inl): өзен, атырап, оазис, егін, шекара таулары ----
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateTerrainTextures();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateNatureAssets();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateAnimalMaterial();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildTerrainAssets(const FString& MapPath);
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateTerrainMaterials();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreateMountainMesh();
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool RebuildTerrain(const FString& MapPath);
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool PlacePlayerStart(const FString& MapPath);
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildTerrainAll(const FString& MapPath);
 };

@@ -856,7 +856,7 @@ void AKAPGameMode::StartSession(bool bLoad)
 		Ss.Time = D->Cfg("startHour", 12.5f);
 		Ss.Inv = { { "water", 1 }, { "bandage", 1 }, { "food", 1 } };
 		Ss.Ammo = { { "flare", 3 } };
-		Ss.Weapons = { "wrench", "knife", "crowbar", "flare" };
+		Ss.Weapons = { "wrench", "knife", "crowbar", "axe", "flare" };
 		WM->NewGameState(Ss);
 		D->Brigades->ForeachRow<FKAPBrigadeRow>(TEXT("KAP"), [&](const FName& K, const FKAPBrigadeRow& B)
 			{ FKAPBrigadeState St; St.Id = K; St.Pos = St.Base = FVector2D(B.X, B.Y); Ss.Brigades.Add(St); });
@@ -1254,12 +1254,21 @@ void AKAPGameMode::Simulate(float Dt)
 	// найзағай электр ақауын тудыруы мүмкін
 	if (Weather->Env.Lightning >= 0.99f)
 	{
-		FTimerHandle H; GetWorldTimerManager().SetTimer(H, [this]() { UKAPAudio::Get(this)->Play(EKAPSound::Thunder, 0.9f); }, 0.5f + Rng.FRand() * 1.5f, false);
-		if (Ss.bSimActive && Rng.FRand() < 0.25f)
+		// күн күркіреуі: жарқылдан кейін қашықтыққа қарай (дыбыс 343 м/с), алыс болса — бәсең
+		const float ThunderVol = FMath::Clamp(1.2f - Weather->Env.StrikeDelay / 12.f, 0.3f, 1.f);
+		FTimerHandle H; GetWorldTimerManager().SetTimer(H, [this, ThunderVol]() { UKAPAudio::Get(this)->Play(EKAPSound::Thunder, ThunderVol); }, FMath::Max(0.15f, Weather->Env.StrikeDelay), false);
+		if (Ss.bSimActive)
 		{
-			TArray<int32> C;
-			for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok && Ss.Regions[WM->Wells[i].Row.Region]) C.Add(i);
-			if (C.Num()) WM->StartFault(Ss, C[Rng.RandRange(0, C.Num() - 1)], EFaultType::Electric, TEXT("найзағай түсті"));
+			// найзағай ұңғымаға (150 м ішінде) түссе — сол ұңғымада электр ақауы; әйтпесе сирек кездейсоқ ақау (желі арқылы)
+			int32 Near = -1; float Best = 15000.f;
+			for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok) { const float Dd = FVector::Dist2D(FVector(WM->Wells[i].PosM() * 100.0, 0), Weather->Env.StrikeAt); if (Dd < Best) { Best = Dd; Near = i; } }
+			if (Near >= 0) WM->StartFault(Ss, Near, EFaultType::Electric, TEXT("ұңғымаға найзағай түсті"));
+			else if (Rng.FRand() < 0.12f)
+			{
+				TArray<int32> C;
+				for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok && Ss.Regions[WM->Wells[i].Row.Region]) C.Add(i);
+				if (C.Num()) WM->StartFault(Ss, C[Rng.RandRange(0, C.Num() - 1)], EFaultType::Electric, TEXT("найзағай электр желісіне түсті"));
+			}
 		}
 		Weather->Env.Lightning = 0.98f;
 	}
