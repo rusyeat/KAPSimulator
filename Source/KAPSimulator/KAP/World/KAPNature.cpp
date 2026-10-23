@@ -20,12 +20,12 @@
 
 namespace
 {
-	UStaticMesh* LoadSM(const FString& Name)
+	UStaticMesh* NatLoadSM(const FString& Name)
 	{
 		return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/KAP/Meshes/%s.%s"), *Name, *Name), nullptr, LOAD_NoWarn | LOAD_Quiet);
 	}
 	/** Арна кесілген жер (су мен жағаның тік беті): көпір керек */
-	bool Carved(float X, float Y)
+	bool NatCarved(float X, float Y)
 	{
 		float Hw; const float Dc = KAPTerrain::ChannelDist(X, Y, Hw);
 		if (Dc < Hw * 1.45f + 1.5f) return true;
@@ -34,7 +34,7 @@ namespace
 		return false;
 	}
 	/** Су немесе жаға маңы (ағаш/бұта/бағана қойылмайды) */
-	bool NearWater(float X, float Y, float Margin)
+	bool NatNearWater(float X, float Y, float Margin)
 	{
 		float Hw; const float Dc = KAPTerrain::ChannelDist(X, Y, Hw);
 		if (Dc < Hw * 1.5f + Margin) return true;
@@ -54,7 +54,7 @@ void AKAPWoodPile::BeginPlay()
 {
 	Super::BeginPlay();
 	KAPReg::Add(KAPReg::Interactables(), (AActor*)this);
-	UStaticMesh* Log = LoadSM(TEXT("SM_KAP_SaxaulLog"));
+	UStaticMesh* Log = NatLoadSM(TEXT("SM_KAP_SaxaulLog"));
 	FKAPMat Bark = FKAPMat::Paint(FLinearColor(0.36f, 0.31f, 0.25f), 0.93f); Bark.Grime = 0.7f; Bark.VarAmt = 0.18f; Bark.DustTop = 0.5f;
 	if (Log) for (int32 i = 0; i < FMath::Clamp(Amount, 2, 5); i++)
 		KAPVis::AddMesh(this, RootComponent, Log, FVector(FMath::FRandRange(-25.f, 25.f), (i - 1.5f) * 11.f, 5.f + (i % 2) * 8.f), FVector(1.f), Bark, FRotator(FMath::FRandRange(-8.f, 8.f), FMath::FRandRange(-25.f, 25.f), FMath::FRandRange(0.f, 360.f)), false);
@@ -139,7 +139,7 @@ void AKAPNature::PlanBridges(UKAPDataSubsystem* D, TFunctionRef<float(FVector2D)
 		for (float S = 0.f; S <= L + 0.25f; S += 0.5f)
 		{
 			const FVector2D P = A + Dir * FMath::Min(S, L);
-			const bool bC = Carved((float)P.X, (float)P.Y);
+			const bool bC = NatCarved((float)P.X, (float)P.Y);
 			if (bC && S0 < 0.f) S0 = S;
 			if ((!bC || S + 0.5f > L + 0.25f) && S0 >= 0.f) { Spans.Add(FVector2f(S0, S)); S0 = -1.f; }
 		}
@@ -334,7 +334,7 @@ void AKAPNature::BuildWater()
 // ---------------------------------------------------------------- таулар, шекара
 void AKAPNature::BuildMountains()
 {
-	if (UStaticMesh* M = LoadSM(TEXT("SM_KAP_Mountains")))
+	if (UStaticMesh* M = NatLoadSM(TEXT("SM_KAP_Mountains")))
 	{
 		Mountains = NewObject<UStaticMeshComponent>(this);
 		Mountains->SetStaticMesh(M);
@@ -386,8 +386,8 @@ void AKAPNature::BuildTrees()
 	UHierarchicalInstancedStaticMeshComponent* Trunk[4][2] = {}; UHierarchicalInstancedStaticMeshComponent* Leaf[4][2] = {};
 	for (int32 s = 0; s < 4; s++) for (int32 v = 0; v < 2; v++)
 	{
-		UStaticMesh* T = LoadSM(FString::Printf(TEXT("SM_KAP_%sTrunk_%d"), Sp[s].Name, v));
-		UStaticMesh* L = LoadSM(FString::Printf(TEXT("SM_KAP_%sLeaf_%d"), Sp[s].Name, v));
+		UStaticMesh* T = NatLoadSM(FString::Printf(TEXT("SM_KAP_%sTrunk_%d"), Sp[s].Name, v));
+		UStaticMesh* L = NatLoadSM(FString::Printf(TEXT("SM_KAP_%sLeaf_%d"), Sp[s].Name, v));
 		if (!T || !L) continue;
 		FKAPMat Bm = FKAPMat::Paint(Sp[s].Bark, 0.95f); Bm.Grime = 0.6f; Bm.VarAmt = 0.2f; Bm.VarScale = 0.02f; Bm.DustTop = 0.3f; Bm.Surface = 2;
 		Trunk[s][v] = MakeH(T, KAPVis::SharedMaterial(Bm), s != 3, 70000, true);
@@ -405,7 +405,7 @@ void AKAPNature::BuildTrees()
 		Trunk[s][v]->AddInstance(X); Leaf[s][v]->AddInstance(X);
 		N++;
 	};
-	auto Ok = [&](FVector2D P, float Water) { return !NearWater(P.X, P.Y, Water) && FieldMask(P.X, P.Y) <= 0.f && Clear(P, 8.f, 6.f) && FMath::Max(FMath::Abs(P.X), FMath::Abs(P.Y)) < 1140.f; };
+	auto Ok = [&](FVector2D P, float Water) { return !NatNearWater(P.X, P.Y, Water) && FieldMask(P.X, P.Y) <= 0.f && Clear(P, 8.f, 6.f) && FMath::Max(FMath::Abs(P.X), FMath::Abs(P.Y)) < 1140.f; };
 	// оазис: бұлақ айналасында терек, қарағаш, жыңғыл
 	for (int32 i = 0; i < 60; i++)
 	{
@@ -438,7 +438,7 @@ void AKAPNature::BuildTrees()
 			{
 				const float A = R.FRandRange(0.f, UE_TWO_PI), Rr = R.FRandRange(L.R - 25.f, L.R + 30.f);
 				const FVector2D P(L.X + FMath::Cos(A) * Rr, L.Y + FMath::Sin(A) * Rr);
-				if (!NearWater(P.X, P.Y, 1.f) && FieldMask(P.X, P.Y) <= 0.f && RoadDist(P) > 7.f && Clear(P, 7.f, -L.R + 2.f)) Plant(R.FRand() < 0.8f ? 2 : 0, P, R.FRandRange(0.8f, 1.15f));
+				if (!NatNearWater(P.X, P.Y, 1.f) && FieldMask(P.X, P.Y) <= 0.f && RoadDist(P) > 7.f && Clear(P, 7.f, -L.R + 2.f)) Plant(R.FRand() < 0.8f ? 2 : 0, P, R.FRandRange(0.8f, 1.15f));
 			}
 		});
 	UE_LOG(LogTemp, Display, TEXT("KAPNATURE trees=%d"), N);
@@ -457,7 +457,7 @@ void AKAPNature::BuildRocks()
 		const FVector2D P(R.FRandRange(-1206.f, 1206.f), R.FRandRange(-1206.f, 1206.f));
 		const float Fm = FoothillMask(P.X, P.Y);
 		if (Fm < 0.05f || R.FRand() > Fm) continue;
-		if (NearWater(P.X, P.Y, 2.f)) continue;
+		if (NatNearWater(P.X, P.Y, 2.f)) continue;
 		const float S = R.FRandRange(0.8f, 2.5f) * (0.7f + Fm * 1.6f);
 		const float Z = KAPVis::GroundZ(GetWorld(), P.X * 100, P.Y * 100, 0.f);
 		H->AddInstance(FTransform(FRotator(R.FRandRange(-25.f, 25.f), R.FRandRange(0.f, 360.f), R.FRandRange(-25.f, 25.f)), FVector(P.X * 100, P.Y * 100, Z - S * 30.f), FVector(S * R.FRandRange(0.9f, 1.6f), S, S * 0.8f)));
@@ -474,8 +474,8 @@ void AKAPNature::BuildSaxaul()
 	BarkMat = KAPVis::SharedMaterial(Bark);
 	for (int32 v = 0; v < 3; v++)
 	{
-		UStaticMesh* W = LoadSM(FString::Printf(TEXT("SM_KAP_SaxaulWood_%d"), v));
-		UStaticMesh* T = LoadSM(FString::Printf(TEXT("SM_KAP_SaxaulTwig_%d"), v));
+		UStaticMesh* W = NatLoadSM(FString::Printf(TEXT("SM_KAP_SaxaulWood_%d"), v));
+		UStaticMesh* T = NatLoadSM(FString::Printf(TEXT("SM_KAP_SaxaulTwig_%d"), v));
 		if (!W || !T) return;
 		SaxWood.Add(MakeH(W, BarkMat, false, 45000, true));
 		SaxTwig.Add(MakeH(T, nullptr, false, 32000, true));
@@ -499,7 +499,7 @@ void AKAPNature::BuildSaxaul()
 		// құмда — тоғай болып көп; жазық далада — шоғыр-шоғыр; ылғалды жерде, егінде, бөктерде — жоқ
 		const float Wt = FMath::Max(Dm * 0.95f * Smooth(0.3f, 0.55f, Cl), (1.f - Dm) * 0.55f * Smooth(0.4f, 0.62f, Cl));
 		if (R.FRand() > Wt) continue;
-		if (NearWater(P.X, P.Y, 6.f) || WetMask(P.X, P.Y) > 0.2f || FieldMask(P.X, P.Y) > 0.f || FoothillMask(P.X, P.Y) > 0.25f) continue;
+		if (NatNearWater(P.X, P.Y, 6.f) || WetMask(P.X, P.Y) > 0.2f || FieldMask(P.X, P.Y) > 0.f || FoothillMask(P.X, P.Y) > 0.25f) continue;
 		if (!Clear(P, 6.f, 5.f)) continue;
 		FSax S;
 		S.V = (uint8)R.RandRange(0, 2);
@@ -565,7 +565,7 @@ void AKAPNature::BreakSaxaul(int32 I, const FVector& Push)
 	}
 	Felled.Add(F);
 	// ұшқан бөлшектер (физика)
-	if (UStaticMesh* Log = LoadSM(TEXT("SM_KAP_SaxaulLog")))
+	if (UStaticMesh* Log = NatLoadSM(TEXT("SM_KAP_SaxaulLog")))
 		for (int32 k = 0; k < 2 + S.V; k++)
 		{
 			UStaticMeshComponent* C = NewObject<UStaticMeshComponent>(this);

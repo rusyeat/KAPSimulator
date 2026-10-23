@@ -206,7 +206,7 @@ bool UKAPEditorLibrary::CreateNatureAssets()
 	UMaterialInstanceConstant* MiWheat = MakeMIC(TEXT("MI_KAP_Wheat"), M, FLinearColor(0.7f, 0.57f, 0.29f), 13.f);
 	UMaterialInstanceConstant* MiGreen = MakeMIC(TEXT("MI_KAP_GreenCrop"), M, FLinearColor(0.2f, 0.34f, 0.11f), 7.f);
 	UMaterialInstanceConstant* MiReed = MakeMIC(TEXT("MI_KAP_Reed"), M, FLinearColor(0.44f, 0.45f, 0.25f), 28.f);
-	UMaterialInstanceConstant* MiTwig = MakeMIC(TEXT("MI_KAP_SaxaulTwig"), M, FLinearColor(0.29f, 0.33f, 0.21f), 5.f);
+	UMaterialInstanceConstant* MiTwig = MakeMIC(TEXT("MI_KAP_SaxaulTwig"), M, FLinearColor(0.43f, 0.46f, 0.33f), 5.f);
 	UMaterialInstanceConstant* MiPoplar = MakeMIC(TEXT("MI_KAP_PoplarLeaf"), M, FLinearColor(0.24f, 0.34f, 0.14f), 22.f);
 	UMaterialInstanceConstant* MiWillow = MakeMIC(TEXT("MI_KAP_WillowLeaf"), M, FLinearColor(0.31f, 0.41f, 0.18f), 30.f);
 	UMaterialInstanceConstant* MiElm = MakeMIC(TEXT("MI_KAP_ElmLeaf"), M, FLinearColor(0.19f, 0.3f, 0.11f), 18.f);
@@ -285,9 +285,9 @@ bool UKAPEditorLibrary::CreateNatureAssets()
 		auto TwigTip = [&](const V3& P, const V3& D, float Rad)
 		{
 			// сексеуілдің бұлдыр сұр-жасыл «бұлты» (алыстан бұта болып көрінеді)
-			Blob(Twig, R, P + V3(0, 0, -6.f), V3(R.FRandRange(30.f, 48.f), R.FRandRange(30.f, 48.f), R.FRandRange(22.f, 34.f)), 5);
+			for (int32 b = 0; b < 3; b++) Blob(Twig, R, P + V3(R.FRandRange(-22.f, 22.f), R.FRandRange(-22.f, 22.f), R.FRandRange(-14.f, 4.f)), V3(R.FRandRange(13.f, 22.f), R.FRandRange(13.f, 22.f), R.FRandRange(10.f, 16.f)), 4);
 			// салбыраған буынды бұтақшалар (сексеуілдің «жапырағы»)
-			const int32 N = 9 + R.RandRange(0, 5);
+			const int32 N = 14 + R.RandRange(0, 6);
 			for (int32 k = 0; k < N; k++)
 			{
 				const V3 O = (D * 0.4f + V3(R.FRandRange(-1.f, 1.f), R.FRandRange(-1.f, 1.f), R.FRandRange(-0.2f, 0.6f))).GetSafeNormal();

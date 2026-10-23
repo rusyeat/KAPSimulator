@@ -23,13 +23,13 @@
 
 namespace
 {
-	struct FKindDef
+	struct FAnimalKindDef
 	{
 		const TCHAR* Name; float Walk, Trot, Gallop; float Len, Height; float Hp; float FearR; float Turn;
 		FLinearColor A[3], B[3]; // жүн түсі нұсқалары: негізгі / екінші
 	};
 	// жылдамдықтар — м/с; Len/Height — м; FearR — адамнан қорқу қашықтығы (м)
-	const FKindDef Defs[5] = {
+	const FAnimalKindDef AnimalDefs[5] = {
 		{ TEXT("Horse"), 1.2f, 3.2f, 8.f, 2.3f, 1.45f, 160.f, 22.f, 140.f,
 			{ FLinearColor(0.2f, 0.1f, 0.05f), FLinearColor(0.32f, 0.2f, 0.1f), FLinearColor(0.07f, 0.05f, 0.04f) },
 			{ FLinearColor(0.04f, 0.03f, 0.025f), FLinearColor(0.06f, 0.04f, 0.03f), FLinearColor(0.03f, 0.025f, 0.02f) } },
@@ -46,9 +46,9 @@ namespace
 			{ FLinearColor(0.45f, 0.18f, 0.05f), FLinearColor(0.5f, 0.24f, 0.08f), FLinearColor(0.38f, 0.26f, 0.15f) },
 			{ FLinearColor(0.75f, 0.72f, 0.66f), FLinearColor(0.7f, 0.66f, 0.6f), FLinearColor(0.72f, 0.7f, 0.65f) } },
 	};
-	const TCHAR* AnimName[5] = { TEXT("Idle"), TEXT("Walk"), TEXT("Trot"), TEXT("Gallop"), TEXT("Graze") };
+	const TCHAR* AnimalAnimNames[5] = { TEXT("Idle"), TEXT("Walk"), TEXT("Trot"), TEXT("Gallop"), TEXT("Graze") };
 	// Blender-дегі табиғи жылдамдық (м/с, адым ұзындығы бойынша; animals.json)
-	const float Native[5][5] = {
+	const float AnimalNative[5][5] = {
 		{ 0.f, 0.864f, 2.548f, 5.381f, 0.f }, { 0.f, 0.582f, 1.761f, 3.676f, 0.f }, { 0.f, 0.533f, 1.534f, 3.333f, 0.f },
 		{ 0.f, 0.448f, 1.293f, 2.641f, 0.f }, { 0.f, 0.447f, 1.344f, 2.766f, 0.f } };
 }
@@ -79,7 +79,7 @@ void AKAPAnimal::Setup(EAnimalKind InKind, int32 InHerd, FVector2D HomeM, float 
 {
 	Kind = InKind; Herd = InHerd; Home = HomeM; HomeR = InHomeR;
 	Rng.Initialize(Seed);
-	const FKindDef& D = Defs[(int32)Kind];
+	const FAnimalKindDef& D = AnimalDefs[(int32)Kind];
 	Hp = D.Hp;
 	const FString Base = FString::Printf(TEXT("/Game/KAP/Animals/V1/SKM_KAP_%s.SKM_KAP_%s"), D.Name, D.Name);
 	if (USkeletalMesh* SK = LoadObject<USkeletalMesh>(nullptr, *Base, nullptr, LOAD_NoWarn | LOAD_Quiet))
@@ -102,9 +102,9 @@ void AKAPAnimal::Setup(EAnimalKind InKind, int32 InHerd, FVector2D HomeM, float 
 	}
 	for (int32 a = 0; a < 5; a++)
 	{
-		const FString P = FString::Printf(TEXT("/Game/KAP/Animals/V1/AN_KAP_%s_%s.AN_KAP_%s_%s"), D.Name, AnimName[a], D.Name, AnimName[a]);
+		const FString P = FString::Printf(TEXT("/Game/KAP/Animals/V1/AN_KAP_%s_%s.AN_KAP_%s_%s"), D.Name, AnimalAnimNames[a], D.Name, AnimalAnimNames[a]);
 		Anim[a].Seq = LoadObject<UAnimSequence>(nullptr, *P, nullptr, LOAD_NoWarn | LOAD_Quiet);
-		Anim[a].Native = Native[(int32)Kind][a];
+		Anim[a].Native = AnimalNative[(int32)Kind][a];
 		if (Anim[a].Seq) AnimKeep.Add(Anim[a].Seq);
 	}
 	if (!Anim[4].Seq) Anim[4] = Anim[0];
@@ -170,7 +170,7 @@ float AKAPAnimal::TakeDamage(float Damage, FDamageEvent const& Event, AControlle
 {
 	if (State == EAnimalState::Dead) return 0.f;
 	Hp -= Damage;
-	if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Blood, GetActorLocation() + FVector(0, 0, Defs[(int32)Kind].Height * 60.f), 1.f);
+	if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Blood, GetActorLocation() + FVector(0, 0, AnimalDefs[(int32)Kind].Height * 60.f), 1.f);
 	const FVector From = Causer ? Causer->GetActorLocation() : GetActorLocation() - GetActorForwardVector() * 500.f;
 	if (Hp <= 0.f) Die((GetActorLocation() - From).GetSafeNormal() * 600.f + FVector(0, 0, 200.f));
 	else Scare(From, 1.f);
@@ -204,7 +204,7 @@ void AKAPAnimal::Die(const FVector& Impulse)
 
 void AKAPAnimal::Think()
 {
-	const FKindDef& D = Defs[(int32)Kind];
+	const FAnimalKindDef& D = AnimalDefs[(int32)Kind];
 	const FVector P = GetActorLocation();
 	const FVector2D Pm = FVector2D(P) / 100.0;
 	const AWeatherManager* WX = AWeatherManager::Get(GetWorld());
@@ -282,7 +282,7 @@ void AKAPAnimal::Think()
 
 void AKAPAnimal::Move(float Dt)
 {
-	const FKindDef& D = Defs[(int32)Kind];
+	const FAnimalKindDef& D = AnimalDefs[(int32)Kind];
 	FVector P = GetActorLocation();
 	const FVector2D Pm = FVector2D(P) / 100.0;
 	const AWeatherManager* WX = AWeatherManager::Get(GetWorld());
@@ -334,7 +334,7 @@ void AKAPAnimal::Move(float Dt)
 				if (O.IsValid() && O.Get() != this && !O->IsDead())
 				{
 					const FVector2D Dv = Pm - FVector2D(O->GetActorLocation()) / 100.0;
-					const float Dd = Dv.Size(), Min = (D.Len + Defs[(int32)O->Kind].Len) * 0.45f;
+					const float Dd = Dv.Size(), Min = (D.Len + AnimalDefs[(int32)O->Kind].Len) * 0.45f;
 					if (Dd < Min && Dd > 0.01f) Sep += Dv / Dd * (1.f - Dd / Min);
 				}
 		To = (To + Sep * 1.5f).GetSafeNormal();
@@ -394,7 +394,7 @@ void AKAPAnimal::Tick(float Dt)
 			if (V.IsValid() && V->Pawn)
 			{
 				const FVector Vv = V->Pawn->GetVelocity();
-				if (Vv.Size2D() > 400.f && FVector::Dist2D(V->Pawn->GetActorLocation(), GetActorLocation()) < 230.f + Defs[(int32)Kind].Len * 35.f)
+				if (Vv.Size2D() > 400.f && FVector::Dist2D(V->Pawn->GetActorLocation(), GetActorLocation()) < 230.f + AnimalDefs[(int32)Kind].Len * 35.f)
 				{
 					Hp -= Vv.Size2D() / 100.f * 12.f;
 					if (Hp <= 0.f) Die(Vv * 0.6f + FVector(0, 0, 300.f)); else Scare(V->Pawn->GetActorLocation(), 1.f);

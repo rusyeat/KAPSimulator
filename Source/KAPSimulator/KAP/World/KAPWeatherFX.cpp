@@ -10,7 +10,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Camera/PlayerCameraManager.h"
 
-namespace { constexpr int32 NumDrops = 1600; constexpr float Box = 2600.f, BoxH = 1500.f; }
+namespace { constexpr int32 RainNumDrops = 1600; constexpr float RainBox = 2600.f, RainBoxH = 1500.f; }
 
 AKAPWeatherFX::AKAPWeatherFX()
 {
@@ -34,10 +34,10 @@ void AKAPWeatherFX::BeginPlay()
 	DropMID->SetScalarParameterValue("Opacity", 0.22f);
 	Drops->SetMaterial(0, DropMID);
 	Drops->RegisterComponent();
-	DropPos.SetNum(NumDrops); DropXf.SetNum(NumDrops);
-	for (int32 i = 0; i < NumDrops; i++)
+	DropPos.SetNum(RainNumDrops); DropXf.SetNum(RainNumDrops);
+	for (int32 i = 0; i < RainNumDrops; i++)
 	{
-		DropPos[i] = FVector(FMath::FRandRange(-Box, Box), FMath::FRandRange(-Box, Box), FMath::FRandRange(-BoxH * 0.3f, BoxH));
+		DropPos[i] = FVector(FMath::FRandRange(-RainBox, RainBox), FMath::FRandRange(-RainBox, RainBox), FMath::FRandRange(-RainBoxH * 0.3f, RainBoxH));
 		DropXf[i] = FTransform(FQuat::Identity, DropPos[i], FVector(0.f));
 	}
 	Drops->AddInstances(DropXf, false);
@@ -103,17 +103,17 @@ void AKAPWeatherFX::Tick(float Dt)
 	const FKAPEnv& E = WX->Env;
 	// ---- жаңбыр тамшылары: құлау 9 м/с + жел ----
 	const float Rain = FMath::Clamp(E.Rain * (1.f - WX->Indoor * 0.9f), 0.f, 1.f);
-	const int32 Active = FMath::RoundToInt32(NumDrops * Rain);
+	const int32 Active = FMath::RoundToInt32(RainNumDrops * Rain);
 	const FVector V = FVector(0, 0, -900.f - 300.f * E.Thunder) + E.Wind * 0.85f;
 	const FQuat Q = FRotationMatrix::MakeFromZ(-V.GetSafeNormal()).ToQuat();
 	const float Len = FMath::Clamp(V.Size() * 0.045f, 30.f, 80.f) / 100.f;
-	for (int32 i = 0; i < NumDrops; i++)
+	for (int32 i = 0; i < RainNumDrops; i++)
 	{
 		FVector& P = DropPos[i];
 		P += V * Dt;
 		FVector Rel = P - Cam;
-		for (int32 a = 0; a < 2; a++) { if (Rel[a] < -Box) Rel[a] += 2 * Box; else if (Rel[a] > Box) Rel[a] -= 2 * Box; }
-		if (Rel.Z < -BoxH * 0.3f) Rel.Z += BoxH * 1.3f; else if (Rel.Z > BoxH) Rel.Z -= BoxH * 1.3f;
+		for (int32 a = 0; a < 2; a++) { if (Rel[a] < -RainBox) Rel[a] += 2 * RainBox; else if (Rel[a] > RainBox) Rel[a] -= 2 * RainBox; }
+		if (Rel.Z < -RainBoxH * 0.3f) Rel.Z += RainBoxH * 1.3f; else if (Rel.Z > RainBoxH) Rel.Z -= RainBoxH * 1.3f;
 		P = Cam + Rel;
 		const float Near = FMath::Clamp((Rel.Size() - 60.f) / 150.f, 0.f, 1.f);
 		const float S = i < Active ? Near : 0.f;
