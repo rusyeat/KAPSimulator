@@ -1810,6 +1810,7 @@ void AKAPGameMode::EnterVehicle(AKAPVehicleHandle* V)
 	APlayerController* PC = P ? Cast<APlayerController>(P->GetController()) : nullptr;
 	if (!PC || !V->Pawn) return;
 	CurrentVehicle = V; V->bDriven = true;
+	V->SwingDoor(0, 0.45f); V->bHazard = false; // есікті ашып отырады, апат шамын өшіреді
 	P->SetActorHiddenInGame(true); P->SetActorEnableCollision(false);
 	P->GetCharacterMovement()->DisableMovement();
 	P->Flashlight->SetVisibility(false);
@@ -1828,6 +1829,7 @@ void AKAPGameMode::ExitVehicle()
 	APlayerController* PC = Cast<APlayerController>(V->Pawn->GetController());
 	V->Pawn->DoThrottle(0); V->Pawn->DoHandbrakeStart();
 	V->bDriven = false;
+	V->SwingDoor(0, 0.9f); // жүргізуші есігін ашып түседі, артынан жабады
 	const FVector Side = V->Pawn->GetActorLocation() - V->Pawn->GetActorRightVector() * 260.f + FVector(0, 0, 60);
 	P->SetActorLocation(Side, false, nullptr, ETeleportType::TeleportPhysics);
 	P->SetActorHiddenInGame(false); P->SetActorEnableCollision(true);
@@ -2145,8 +2147,16 @@ void AKAPGameMode::Intro()
 	const float Yaw = FMath::RadiansToDegrees(FMath::Atan2(To.Y - From.Y, To.X - From.X));
 	V->Pawn->GetMesh()->SetSimulatePhysics(false);
 	AKAPNPC* Hero = SpawnNPC((int32)ENPCKind::Worker, FVector2D(-995, 818), TEXT("Сіз"), true);
-	// кейіпкер — тек кинематографиялық «қуыршақ»: соқтығыспайды (әйтпесе көлікке телепорт болғанда физика автобусты лақтырып жібереді)
-	if (Hero) { Hero->SetActorHiddenInGame(true); Hero->bPersistent = true; Hero->SetActorEnableCollision(false); Hero->GetCharacterMovement()->DisableMovement(); CineActors.Add(Hero); }
+	// кейіпкер шын жүреді (CharacterMovement → анимация аяқтарды қозғайды, аяғы жерге тиеді), бірақ тек жерге тіреледі:
+	// көлікке, адамға соқтықпайды (әйтпесе есіктен шыққанда физика автобусты итеріп жібереді)
+	if (Hero)
+	{
+		Hero->SetActorHiddenInGame(true); Hero->bPersistent = true;
+		Hero->GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
+		Hero->GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+		Hero->GetCharacterMovement()->DisableMovement();
+		CineActors.Add(Hero);
+	}
 	struct FLine { float T; const TCHAR* Kk; const TCHAR* Ru; const TCHAR* Who; };
 	static const FLine Lines[] = {
 		{ 11, TEXT("...ш-ш-ш... QazUran кенішінде апат... жерасты ұңғымаларының бірнешеуі істен шықты..."), TEXT("...ш-ш-ш... авария на руднике QazUran... несколько подземных скважин вышли из строя..."), TEXT("Радио") },
@@ -2159,10 +2169,11 @@ void AKAPGameMode::Intro()
 	TSharedRef<int32> Li = MakeShared<int32>(0);
 	TSharedRef<bool> bSteam = MakeShared<bool>(false);
 	TSharedRef<bool> bPlaced = MakeShared<bool>(false);
+	TSharedRef<int32> HeroStage = MakeShared<int32>(0);
 	TWeakObjectPtr<AKAPVehicleHandle> WV = V;
 	TWeakObjectPtr<AKAPNPC> WH = Hero;
 	Subtitle(TEXT("KAP Simulator"), FString(), FString(), 6);
-	StartCine(62.f, [this, WV, WH, From, To, Yaw, Li, bSteam, bPlaced](float T, float Dt)
+	StartCine(62.f, [this, WV, WH, From, To, Yaw, Li, bSteam, bPlaced, HeroStage](float T, float Dt)
 	{
 		AKAPVehicleHandle* V = WV.Get(); if (!V) return;
 		while (*Li < (int32)UE_ARRAY_COUNT(Lines) && T >= Lines[*Li].T)
@@ -2183,10 +2194,14 @@ void AKAPGameMode::Intro()
 		if (V->bAutoPilot && !bDrive) V->Pawn->DoHandbrakeStart();
 		V->bAutoPilot = bDrive;
 		V->AutoTarget = FVector(To.X, To.Y, 0);
-		V->AutoMaxKmh = 30.f;
+		// 27.5 с-тан бастап мотор қызады: тартпай, жұлқынып баяулайды, тордан бу шығады; 34 с — сөнеді
+		const float Brk = Seg(T, 27.5f, 34.f);
+		V->AutoMaxKmh = 30.f - 14.f * Brk + (T > 29.f ? 6.f * FMath::Sin(T * 7.3f) * Brk : 0.f);
+		V->SteamK = T < 27.5f ? 0.f : T < 34.f ? 0.12f + 0.3f * Brk : FMath::Min(1.f, 0.45f + (T - 34.f) * 0.5f);
+		V->bHazard = T > 36.8f;
 		const FVector P = V->Pawn->GetActorLocation();
-		UKAPAudio::Get(this)->SetEngine(bDrive || T < 34, V->SpeedKmh() / 3.6f);
-		UKAPAudio::Get(this)->SetEngineLoad(V->Rpm01, T > 28 ? 0.22f : 0.f);
+		UKAPAudio::Get(this)->SetEngine(bDrive, V->SpeedKmh() / 3.6f);
+		UKAPAudio::Get(this)->SetEngineLoad(V->Rpm01, T > 28 ? 0.22f + 0.2f * Brk : 0.f);
 		const float CurYaw = V->Pawn->GetActorRotation().Yaw;
 		const FVector Fw = FRotator(0, CurYaw, 0).Vector(), Rt = FRotator(0, CurYaw + 90, 0).Vector();
 		if (T < 10)
@@ -2198,22 +2213,57 @@ void AKAPGameMode::Intro()
 		else if (T < 22) { const float K = Seg(T, 10, 22); CineCamera(P + Rt * (1400 - K * 400) + Fw * (-1200 + K * 2000) + FVector(0, 0, 300), P + FVector(0, 0, 120), 55); }
 		else if (T < 34) CineCamera(P - Fw * 900 + FVector(0, 0, 350), P + Fw * 1000, 70);
 		AKAPFXManager* FX = AKAPFXManager::Get(GetWorld());
-		if (FX && T > 28 && T < 46 && FMath::FRand() < Dt * 14) FX->Spawn(T > 34 ? EKAPFX::Steam : EKAPFX::Smoke, P + Fw * 200 + FVector(0, 0, 150), T > 34 ? 2.f : 1.f);
+		// мотор «тұншығады»: түтін құбырынан қара түтін бүркеді
+		if (FX && T > 30 && T < 34 && FMath::FRand() < Dt * 3.f) FX->Spawn(EKAPFX::Smoke, V->ShellToWorld(FVector(-215.f, -50.f, 38.f)), 0.3f, -Fw * 90.f);
 		if (T > 34 && !*bSteam) { *bSteam = true; UKAPAudio::Get(this)->Play(EKAPSound::Steam, 0.6f); }
 		AKAPNPC* H = WH.Get();
 		if (T >= 34 && T < 46 && H)
 		{
-			H->SetActorHiddenInGame(false);
-			const float K = Seg(T, 35, 38);
-			// бүйірден алдыңғы бұрышты айналып алдына шығады (автобустың ішінен өтпейді)
-			const FVector Side = P - Rt * 160, Corner = P - Rt * 160 + Fw * 320, Front = P + Fw * 320;
-			const FVector Hp = K < 0.5f ? FMath::Lerp(Side, Corner, K * 2.f) : FMath::Lerp(Corner, Front, (K - 0.5f) * 2.f);
-			H->SetActorLocation(FVector(Hp.X, Hp.Y, KAPVis::GroundZ(GetWorld(), Hp.X, Hp.Y, 0) + 92));
-			H->SetActorRotation(FRotator(0, K < 1 ? CurYaw : CurYaw + 180, 0));
-			if (FX && T > 39 && FMath::FRand() < Dt * 25) FX->Spawn(EKAPFX::Steam, P + Fw * 190 + FVector(0, 0, 180), 2.5f);
-			const float Ck = Seg(T, 34, 46);
-			const float Ca = CurYaw + 50 - Ck * 30;
-			CineCamera(P + FRotator(0, Ca, 0).Vector() * 700 + FVector(0, 0, 220), Front + FVector(0, 0, 130), 55);
+			UCharacterMovementComponent* CM = H->GetCharacterMovement();
+			auto Gw = [&](float X, float Y) { const FVector W = V->ShellToWorld(FVector(X, Y, 0.f)); return FVector(W.X, W.Y, KAPVis::GroundZ(GetWorld(), W.X, W.Y, W.Z)); };
+			// 35.2 с: жүргізуші есігін ашады; 35.8 с: кабинадан секіріп түседі
+			if (T >= 35.2f && *HeroStage == 0) { *HeroStage = 1; V->SwingDoor(0, -1.f); }
+			if (T >= 35.8f && *HeroStage == 1)
+			{
+				*HeroStage = 2;
+				const FVector In = V->ShellToWorld(FVector(160.f, -72.f, 52.f));
+				H->SetActorLocationAndRotation(In + FVector(0, 0, 92.f), FRotator(0, CurYaw - 90.f, 0), false, nullptr, ETeleportType::TeleportPhysics);
+				H->SetActorHiddenInGame(false);
+				CM->SetMovementMode(MOVE_Falling);
+				CM->MaxWalkSpeed = 135.f;
+				H->LaunchCharacter(-Rt * 175.f + FVector(0, 0, 110.f), true, true);
+			}
+			// жерге түскен соң: есіктің жанынан алдыңғы бұрышты айналып, радиатор алдына барады; бу бетке ұрғанда шегінеді
+			if (*HeroStage >= 2 && CM->MovementMode == MOVE_Walking)
+			{
+				static const FVector2D Path[] = { FVector2D(150.f, -150.f), FVector2D(258.f, -138.f), FVector2D(302.f, -36.f), FVector2D(266.f, -8.f), FVector2D(330.f, -70.f) };
+				int32 Wp = *HeroStage - 2;
+				if (Wp > 4 || (Wp == 3 && T < 41.2f) || (Wp == 4 && T < 43.4f)) Wp = -1;   // радиатор алдында тұрып қарайды
+				if (Wp >= 0)
+				{
+					const FVector Goal = Gw(Path[Wp].X, Path[Wp].Y);
+					const FVector D = (Goal - H->GetActorLocation()).GetSafeNormal2D();
+					CM->MaxWalkSpeed = Wp == 4 ? 210.f : Wp == 3 ? 90.f : 135.f;       // бу бетке ұрады — тез шегінеді
+					if (FVector::Dist2D(Goal, H->GetActorLocation()) > 22.f) H->AddMovementInput(D, 1.f);
+					else
+					{
+						(*HeroStage)++;
+						const FVector Ls = V->WorldToShell(H->GetActorLocation());
+						UE_LOG(LogTemp, Display, TEXT("KAPINTRO hero reached waypoint %d at t=%.2f shell=(%.0f, %.0f)"), Wp, T, Ls.X, Ls.Y);
+					}
+				}
+				else
+				{
+					// тұрғанда радиаторға қарайды
+					const FVector G = V->ShellToWorld(FVector(215.f, 0.f, 0.f));
+					H->SetActorRotation(FMath::RInterpTo(H->GetActorRotation(), FRotator(0, (G - H->GetActorLocation()).Rotation().Yaw, 0), Dt, 4.f));
+				}
+			}
+			// камера: есік ашылуы (бүйірден) → кейіпкерді алдыңғы-сол бұрыштан ілесу → радиатор мен бу (алдыңғы жақтан)
+			const FVector Hl = H->IsHidden() ? V->ShellToWorld(FVector(160.f, -110.f, 100.f)) : H->GetActorLocation();
+			if (T < 36.6f) CineCamera(V->ShellToWorld(FVector(30.f, -600.f, 195.f)), V->ShellToWorld(FVector(170.f, -110.f, 150.f)), 52);
+			else if (T < 39.6f) CineCamera(V->ShellToWorld(FVector(440.f, -430.f, 185.f)), FMath::Lerp(Hl + FVector(0, 0, 30), V->ShellToWorld(FVector(240.f, -60.f, 110.f)), Seg(T, 37.f, 39.6f)), 55);
+			else { const float K = Ease(Seg(T, 39.6f, 46.f)); CineCamera(V->ShellToWorld(FVector(480.f - K * 50.f, 175.f - K * 30.f, 150.f)), V->ShellToWorld(FVector(250.f, -25.f, 95.f)), 50); }
 		}
 		if (T >= 46)
 		{
@@ -2223,6 +2273,8 @@ void AKAPGameMode::Intro()
 			UKAPAudio::Get(this)->SetWind(0.2f + K * 0.8f);
 			const FVector Hl = H ? H->GetActorLocation() : P;
 			const float Lk = Ease(Seg(T, 46, 52));
+			// кейіпкер дауыл жаққа бұрылады
+			if (H && T > 47.f) H->SetActorRotation(FMath::RInterpTo(H->GetActorRotation(), FRotator(0, 135.f, 0), Dt, 2.f));
 			CineCamera(Hl + FVector(300, 250, 90), FMath::Lerp(Hl, Hl + FVector(-30000, 30000, 2500), Lk), 60);
 			if (FX && FMath::FRand() < Dt * 40 * K) FX->Spawn(EKAPFX::Dust, Hl + FVector(FMath::FRandRange(-2000.f, 2000.f), FMath::FRandRange(-2000.f, 2000.f), 200), 3.f);
 		}
@@ -2239,6 +2291,8 @@ void AKAPGameMode::Intro()
 		if (V && P && Wg)
 		{
 			V->bAutoPilot = false;
+			// есік жабылады, радиатор баяу суи береді (бу 2 минутта сөнеді), апат шамдары жанып қалады
+			V->CloseDoor(0); V->SteamK = 0.5f; V->SteamFade = 120.f; V->bHazard = true;
 			// автобус орнынан ауып немесе еңкейіп қалса — дөңгелегіне, тоқтау нүктесіне қойылады
 			const FRotator Vr = V->Pawn->GetActorRotation();
 			const bool bTilted = FMath::Abs(Vr.Roll) > 20.f || FMath::Abs(Vr.Pitch) > 20.f;

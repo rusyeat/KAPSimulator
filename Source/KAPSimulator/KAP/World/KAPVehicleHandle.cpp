@@ -179,6 +179,7 @@ void AKAPVehicleHandle::Tick(float Dt)
 	if (Mov && bActive) Rpm01 = FMath::Clamp(Mov->GetEngineRotationSpeed() / FMath::Max(1.f, Mov->GetEngineMaxRotationSpeed()), 0.f, 1.f);
 	else Rpm01 = FMath::FInterpTo(Rpm01, 0.f, Dt, 2.f);
 	UpdateLights(Dt);
+	DoorTick(Dt);
 	if (WheelPivots.Num()) UpdateVisualWheels();
 	// декоративті дөңгелектер: v / R бұрыштық жылдамдықпен айналады
 	if (FakeWheels.Num() || FakePivots.Num())

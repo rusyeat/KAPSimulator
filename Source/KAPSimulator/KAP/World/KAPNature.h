@@ -41,6 +41,8 @@ public:
 	virtual void Tick(float Dt) override;
 	/** -kapnatureshots: өзен, көпір, атырап, оазис, таулар, сексеуіл, егін, ауа райы суреттері (KAPNatureTest.cpp) */
 	void RunShots();
+	/** -kapfixshots: кіріспе (есік, шығу, бу), NPC жүрісі, ұңғыма жанындағы костюм, жәшіктер, таулар (KAPFixTest.cpp) */
+	void RunFixShots();
 	void DriveTest(class AKAPGameMode* GM, int32 Mode);
 	void AnimalShot(int32 Herd, TFunctionRef<void(FVector2D, FVector2D, float, float)> Go, float Dist, float Up);
 	TWeakObjectPtr<class AKAPNPC> TestNPC;
@@ -73,6 +75,7 @@ public:
 private:
 	void BuildWater();
 	void BuildMountains();
+	void BuildMountainForest();
 	void BuildBridges();
 	void BuildTrees();
 	void BuildRocks();
@@ -94,6 +97,7 @@ private:
 	TArray<FDebris> Debris;
 	UPROPERTY() TArray<TObjectPtr<UProceduralMeshComponent>> Water;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Mountains;
+	UPROPERTY() TArray<TObjectPtr<class UInstancedStaticMeshComponent>> Forest;
 	UPROPERTY() TArray<TObjectPtr<UBoxComponent>> Walls;
 	TWeakObjectPtr<AKAPWorldBuilder> Builder;
 	TWeakObjectPtr<UKAPDataSubsystem> Data;

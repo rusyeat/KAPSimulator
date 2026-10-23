@@ -293,5 +293,7 @@ bool AKAPVehicleHandle::BuildShellBody(USkeletalMeshComponent* M, float Xf, floa
 			S->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 			if (S->Bounds.SphereRadius < 25.f) S->SetCastShadow(false);
 		}
+	// ашылатын есіктер, апат шамдары, бу/антифриз нүктелері (KAPVehicleDoor.cpp)
+	BuildDoors(M, B.O);
 	return true;
 }

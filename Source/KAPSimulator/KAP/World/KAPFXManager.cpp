@@ -1,5 +1,6 @@
 #include "KAPFXManager.h"
 #include "KAPVisuals.h"
+#include "WeatherManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
@@ -29,7 +30,11 @@ void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 		P.C->SetCastShadow(false);
 		P.C->SetAbsolute(true, true, true);
 		P.M = UMaterialInstanceDynamic::Create(KAPVis::TranslucentMaterial(), P.C);
-		P.C->SetMaterial(0, P.M);
+		static TWeakObjectPtr<UMaterialInterface> PuffBase;
+		if (!PuffBase.IsValid()) PuffBase = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/KAP/Materials/M_KAP_Puff.M_KAP_Puff"), nullptr, LOAD_NoWarn | LOAD_Quiet);
+		P.MPuff = PuffBase.IsValid() ? UMaterialInstanceDynamic::Create(PuffBase.Get(), P.C) : P.M;
+		Mids.Add(P.M); Mids.Add(P.MPuff);
+		P.C->SetMaterial(0, P.M); P.Cur = P.M;
 		P.C->RegisterComponent();
 		Pool.Add(P);
 		Next = Pool.Num() - 1;
@@ -52,6 +57,8 @@ void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 		{ FLinearColor(0.7f, 0.74f, 0.75f), 0.8f, 10, 14, 420, 0.45f, 150, false, 980.f },
 		{ FLinearColor(0.5f, 0.42f, 0.3f), 1.2f, 4, 0, 300, 1.f, 200, false, 980.f },
 		{ FLinearColor(0.75f, 0.78f, 0.8f), 0.25f, 3, 8, 120, 0.35f, 40, false, 980.f },
+		// радиатор буы: кішкентай жұмсақ бұлттар, тез ұлғайып жоғары көтеріледі, ақ (күнде сұр болып көрінбесін)
+		{ FLinearColor(1.3f, 1.3f, 1.32f), 2.1f, 22, 62, 85, 0.28f, 18, false },
 	};
 	const FDef& D = Defs[(int32)Type];
 	P.bAlive = true; P.T = 0; P.Life = D.Life * FMath::FRandRange(0.7f, 1.3f);
@@ -61,9 +68,14 @@ void AKAPFXManager::Spawn(EKAPFX Type, FVector Pos, float Size, FVector Vel)
 	P.C->SetWorldLocation(Pos);
 	P.C->SetWorldScale3D(FVector(P.Size / 100.f));
 	P.C->SetVisibility(true);
-	P.M->SetVectorParameterValue("Color", D.C);
-	P.M->SetVectorParameterValue("Emissive", D.bEmit ? D.C * 8.f : FLinearColor::Black);
-	P.M->SetScalarParameterValue("Opacity", D.Op);
+	// газ (түтін, улы бу, бу, шаң) — үлпек материал; қалғаны (от, қан, жарқыл, лай, шашырау) — қатты шар
+	const bool bGas = Type == EKAPFX::Smoke || Type == EKAPFX::Toxic || Type == EKAPFX::Steam || Type == EKAPFX::Dust || Type == EKAPFX::Vapor;
+	UMaterialInstanceDynamic* Want = bGas ? P.MPuff : P.M;
+	if (P.Cur != Want) { P.C->SetMaterial(0, Want); P.Cur = Want; }
+	if (bGas && P.Cur != P.M) { const AWeatherManager* WX = AWeatherManager::Get(GetWorld()); P.Cur->SetScalarParameterValue("Ambient", WX && WX->Env.bNight ? 0.04f : 0.6f); } // күндіз көлеңкедегі бу да ақшыл; түнде жарқырамасын
+	P.Cur->SetVectorParameterValue("Color", D.C);
+	P.Cur->SetVectorParameterValue("Emissive", D.bEmit ? D.C * 8.f : FLinearColor::Black);
+	P.Cur->SetScalarParameterValue("Opacity", D.Op * (bGas && P.Cur != P.M ? 1.6f : 1.f)); // үлпек материал мөлдірлеу — тығыздығын сәл көтереміз
 }
 
 void AKAPFXManager::Tick(float Dt)
@@ -79,6 +91,6 @@ void AKAPFXManager::Tick(float Dt)
 		P.C->AddWorldOffset((P.V + Wind * (P.Grav > 0.f ? 0.1f : 0.4f)) * Dt);
 		const float S = FMath::Max(5.f, P.Size + P.Grow * P.T);
 		P.C->SetWorldScale3D(FVector(S / 100.f));
-		P.M->SetScalarParameterValue("Opacity", P.Op * (1.f - P.T / P.Life));
+		P.Cur->SetScalarParameterValue("Opacity", P.Op * (P.Cur != P.M ? 1.6f : 1.f) * (1.f - P.T / P.Life));
 	}
 }

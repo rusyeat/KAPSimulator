@@ -124,6 +124,8 @@ public:
 	bool bCinematic = false;
 	bool bCineSkippable = true;
 	void SkipCinematic();
+	/** Кинематика уақыты (с); жоқ болса −1 (тест) */
+	float CineTime() const { return Cine.IsSet() ? Cine->T : -1.f; }
 	bool bCredits = false;
 	FString CreditsText;
 	float CreditsT = 0;

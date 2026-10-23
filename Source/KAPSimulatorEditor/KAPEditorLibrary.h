@@ -55,4 +55,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool RebuildTerrain(const FString& MapPath);
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool PlacePlayerStart(const FString& MapPath);
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildTerrainAll(const FString& MapPath);
+	/** Шекара таулары: эрозиялы меш, орман/шалғын/жартас материалы, шырша (тау орманы), тасталған костюм (KAPPropGen.inl) */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildMountainAssets();
+	/** Шырша (SM_KAP_Spruce + M_KAP_Spruce), ұңғыма маңындағы тасталған қорғаныш костюмі (SM_KAP_SuitPile_*) */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreatePropMeshes();
 };

@@ -26,6 +26,7 @@ void AKAPNature::BeginPlay()
 {
 	Super::BeginPlay();
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapnatureshots"))) RunShots();
+	if (FParse::Param(FCommandLine::Get(), TEXT("kapfixshots"))) RunFixShots();
 	// ландшафт диагностикасы: проксилер, компоненттер, соқтығыс, жер биіктігі
 	{
 		int32 NL = 0, NC = 0, NH = 0;

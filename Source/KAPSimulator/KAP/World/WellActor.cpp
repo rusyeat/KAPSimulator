@@ -91,20 +91,28 @@ void AWellActor::Build(int32 InIndex, const FKAPWellRow& Row)
 		FRandomStream Rg(InIndex * 131 + 7);
 		if (Rg.FRand() < 0.6f)
 		{
-			FKAPMat Suit = FKAPMat::Paint(FLinearColor(0.72f, 0.36f, 0.05f), 0.95f); Suit.Ribs = 0.4f; Suit.RibPeriod = 3.5f; Suit.Grime = 0.95f; Suit.DustTop = 1.f;
-			const FVector C(Rg.FRandRange(-650.f, -560.f), Rg.FRandRange(-300.f, 300.f), 36.f);
+			// SM_KAP_SuitPile: жерге құлап жиырылған комбинезон (мата қатпарлары, шағылыс жолақтары, етік пен қолғап);
+			// жанында — құлаған каска мен респиратор. Бәрі алаң сыртында, нақты жер бетінде жатады
+			const FVector C(Rg.FRandRange(-650.f, -560.f), Rg.FRandRange(-300.f, 300.f), 0.f);
 			const float Yw = Rg.FRandRange(0.f, 360.f);
 			const FRotator Ry(0, Yw, 0);
-			auto At = [&](FVector L) { return C + Ry.RotateVector(L); };
-			Add(this, Root, EKAPShape::Cube, At(FVector(0, 0, 0)), FVector(60, 42, 9), Suit, FRotator(2, Yw, 3), false);                        // кеудесі
-			for (float S : { -1.f, 1.f })
+			auto At = [&](FVector L)
 			{
-				Add(this, Root, EKAPShape::Cube, At(FVector(-62, S * 12, -1)), FVector(70, 16, 8), Suit, FRotator(0, Yw + S * 8.f, 0), false); // балақтар
-				Add(this, Root, EKAPShape::Cube, At(FVector(10, S * 40, -1)), FVector(16, 50, 7), Suit, FRotator(0, Yw - S * 30.f, 0), false); // жеңдер
-			}
-			Add(this, Root, EKAPShape::Sphere, At(FVector(42, 4, 2)), FVector(26, 24, 10), Suit, FRotator(0, Yw, 0), false);                 // капюшон
-			Add(this, Root, EKAPShape::Cube, At(FVector(70, -30, 2)), FVector(12, 10, 8), FKAPMat::Paint(FLinearColor(0.04f, 0.04f, 0.04f), 0.7f), FRotator(0, Yw + 40.f, 70.f), false); // газтұтқыш
-			Add(this, Root, EKAPShape::Cylinder, At(FVector(72, -22, 2)), FVector(8, 8, 6), FKAPMat::Paint(FLinearColor(0.7f, 0.58f, 0.1f), 0.5f), FRotator(0, Yw, 90), false);
+				FVector P = C + Ry.RotateVector(L);
+				const FVector Wp = GetActorTransform().TransformPosition(FVector(P.X, P.Y, 0));
+				P.Z = KAPVis::GroundZ(GetWorld(), Wp.X, Wp.Y, Wp.Z) - GetActorLocation().Z + L.Z;
+				return P;
+			};
+			auto LoadSM = [](const TCHAR* N) { return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/KAP/Meshes/%s.%s"), N, N), nullptr, LOAD_NoWarn | LOAD_Quiet); };
+			FKAPMat Suit = FKAPMat::Paint(FLinearColor(0.7f, 0.33f, 0.045f), 0.93f); Suit.Grime = 0.95f; Suit.DustTop = 1.f; Suit.VarAmt = 0.16f; Suit.VarScale = 0.04f;
+			FKAPMat Tape = FKAPMat::Paint(FLinearColor(0.34f, 0.34f, 0.32f), 0.42f); Tape.Grime = 0.9f; Tape.DustTop = 0.95f;
+			FKAPMat Rubber = FKAPMat::Paint(FLinearColor(0.03f, 0.03f, 0.028f), 0.62f); Rubber.Grime = 0.8f; Rubber.DustTop = 0.9f;
+			const FKAPMat* PileM[4] = { &Suit, &Tape, &Suit, &Rubber };
+			for (int32 r : { 0, 1, 3 })
+				if (UStaticMesh* Pm = LoadSM(*FString::Printf(TEXT("SM_KAP_SuitPile_%d"), r)))
+					KAPVis::AddMesh(this, Root, Pm, At(FVector(0, 0, -0.6f)), FVector(1.f), *PileM[r], Ry, false)->SetCastShadow(true);
+			FKAPMat HardHat = FKAPMat::Paint(FLinearColor(0.9f, 0.68f, 0.02f), 0.32f); HardHat.Grime = 0.7f; HardHat.DustTop = 1.f;
+			if (UStaticMesh* Hh = LoadSM(TEXT("SM_KAP_HardHat"))) KAPVis::AddMesh(this, Root, Hh, At(FVector(58, -30, 10.f)), FVector(1.f), HardHat, FRotator(18, Yw + 40.f, 105.f), false); // бүйірімен жатыр
 		}
 		const int32 Birds = Rg.RandRange(2, 6);
 		const FKAPMat Feather = FKAPMat::Paint(FLinearColor(0.06f, 0.055f, 0.05f), 0.9f);

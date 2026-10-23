@@ -93,10 +93,40 @@ AKAPStructure* AKAPWorldBuilder::SpawnStruct(int32 Type, FVector2D P, float Yaw,
 AKAPInteractSpot* AKAPWorldBuilder::SpawnSpot(FName Action, FVector PosCm, float Radius, bool bBox)
 {
 	FActorSpawnParameters SP; SP.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	AKAPInteractSpot* S = GetWorld()->SpawnActor<AKAPInteractSpot>(PosCm, FRotator::ZeroRotator, SP);
+	float Yaw = 0.f;
+	if (bBox)
+	{
+		// жәшік ауада тұрмайды: астындағы бетке (вагон едені, бетон алаң, ландшафт) қойылады
+		FHitResult H; FCollisionQueryParams Q(SCENE_QUERY_STAT(KAPSpotGround), false);
+		const FVector From = PosCm + FVector(0, 0, 60), To = PosCm - FVector(0, 0, 600);
+		if (GetWorld()->LineTraceSingleByObjectType(H, From, To, FCollisionObjectQueryParams(ECC_WorldStatic), Q) && H.ImpactNormal.Z > 0.6f) PosCm.Z = H.ImpactPoint.Z;
+		else PosCm.Z = KAPVis::GroundZ(GetWorld(), PosCm.X, PosCm.Y, PosCm.Z - 40.f);
+		Yaw = FMath::Fmod(FMath::Abs(PosCm.X * 0.013f + PosCm.Y * 0.029f), 360.f);
+	}
+	AKAPInteractSpot* S = GetWorld()->SpawnActor<AKAPInteractSpot>(PosCm, FRotator(0, Yaw, 0), SP);
 	if (!S) return nullptr;
 	S->Action = Action; S->Radius = Radius;
-	if (bBox) S->Visual = KAPVis::Add(S, S->GetRootComponent(), EKAPShape::Cube, FVector(0, 0, 15), FVector(50, 40, 30), FKAPMat::Paint(FLinearColor(0.2f, 0.35f, 0.15f), 0.7f), FRotator::ZeroRotator, false);
+	if (bBox)
+	{
+		// әскери оқ-дәрі жәшігі: жасылға боялған тақтай, қақпақ, шеткі тақтайшалар, темір тұтқа мен ілгектер, трафарет жазу
+		FKAPMat Wood = FKAPMat::Paint(FLinearColor(0.16f, 0.2f, 0.1f), 0.82f); Wood.Ribs = 0.3f; Wood.RibPeriod = 10.f; Wood.Grime = 0.75f; Wood.DustTop = 0.95f; Wood.VarAmt = 0.14f; Wood.Surface = 2;
+		FKAPMat Dark = Wood; Dark.Color = Wood.Color * 0.72f; Dark.Ribs = 0.f;
+		const FKAPMat Iron = FKAPMat::RustySteel(FLinearColor(0.12f, 0.12f, 0.11f), 0.5f);
+		USceneComponent* Rt = S->GetRootComponent();
+		S->Visual = KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(0, 0, 14), FVector(60, 38, 28), Wood, FRotator::ZeroRotator, false);
+		KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(0, 0, 29.5f), FVector(63, 41, 3.5f), Dark, FRotator::ZeroRotator, false);       // қақпақ
+		for (float Sx : { -1.f, 1.f })
+		{
+			KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(Sx * 30.5f, 0, 14), FVector(3, 40, 28), Dark, FRotator::ZeroRotator, false); // шеткі тақтайша
+			KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(Sx * 32.5f, 0, 19), FVector(2.5f, 15, 3), Iron, FRotator::ZeroRotator, false); // тұтқа
+			KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(Sx * 16.f, 19.8f, 25), FVector(5, 1.6f, 8), Iron, FRotator::ZeroRotator, false); // ілгек
+		}
+		for (float Zb : { 5.f, 22.f }) KAPVis::Add(S, Rt, EKAPShape::Cube, FVector(0, 19.4f, Zb), FVector(56, 1.2f, 3.5f), Dark, FRotator::ZeroRotator, false);
+		UTextRenderComponent* T = NewObject<UTextRenderComponent>(S);
+		T->SetupAttachment(Rt); T->SetRelativeLocation(FVector(0, 20.4f, 14)); T->SetRelativeRotation(FRotator(0, 90, 0));
+		KAPVis::SignText(T); T->SetText(FText::FromString(TEXT("7,62\n440 шт"))); T->SetHorizontalAlignment(EHTA_Center); T->SetVerticalAlignment(EVRTA_TextCenter);
+		T->SetWorldSize(5.5f); T->SetTextRenderColor(FColor(190, 186, 160)); T->RegisterComponent();
+	}
 	return S;
 }
 

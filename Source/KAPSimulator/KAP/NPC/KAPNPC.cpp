@@ -35,6 +35,8 @@
 #include "KAP/Core/KAPRegistry.h"
 #include "Kismet/GameplayStatics.h"
 #include "KAP/Core/KAPRegistry.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 
 double AKAPNPC::TrainMs = 0;
 static KAPAI::FQPolicy GPolicies[3];
@@ -616,7 +618,10 @@ void AKAPNPC::Tick(float Dt)
 	}
 	if (bKnockedOut) { KOT -= Dt; if (KOT <= 0.f) Recover(); return; }
 	if (DistP > 450 && !bPersistent) { Destroy(); return; }
-	UpdateLod(DistP);
+	// LOD — камераға дейінгі қашықтық та ескеріледі: кинематикада камера ойыншыдан алыста (кейіпкер «қатып» қалмасын)
+	float DistLod = DistP;
+	if (const APlayerController* Pc = GetWorld()->GetFirstPlayerController()) if (Pc->PlayerCameraManager) DistLod = FMath::Min(DistLod, (float)FVector::Dist2D(GetActorLocation(), Pc->PlayerCameraManager->GetCameraLocation()) / 100.f);
+	UpdateLod(DistLod);
 	if (LodTier >= 3) return; // өте алыс: AI тоқтап тұрады, тек қашықтық тексеріледі
 	if (GM->bCinematic) return;
 	if (bStalker) { StalkerTick(Dt, PC, DistP); return; }

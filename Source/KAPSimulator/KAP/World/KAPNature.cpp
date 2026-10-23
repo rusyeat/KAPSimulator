@@ -14,6 +14,8 @@
 #include "KAP/Player/KAPCharacter.h"
 #include "ProceduralMeshComponent.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Async/ParallelFor.h"
 #include "Components/BoxComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "EngineUtils.h"
@@ -344,6 +346,7 @@ void AKAPNature::BuildMountains()
 		Mountains->bCastFarShadow = true;
 		Mountains->SetCachedMaxDrawDistance(0.f);
 		Mountains->RegisterComponent();
+		BuildMountainForest();
 	}
 	// көрінбейтін шекара: бөктерге шығып кетпеу үшін (таудың өзіне жету мүмкін емес)
 	const float B = 115000.f;
@@ -361,6 +364,74 @@ void AKAPNature::BuildMountains()
 		Bx->RegisterComponent();
 		Walls.Add(Bx);
 	}
+}
+
+/** Тау орманы: шыршалар SM_KAP_Mountains үшбұрыштарына дәл отырады (тор — KAPTerrain::Mtn, меш генераторымен бірдей).
+ *  Етекте (шеттен 140 м биік емес) — дала; 2 км-ден жоғары — ағаш азайып кішірейеді; тік беткей мен ашық алаңда — жоқ */
+void AKAPNature::BuildMountainForest()
+{
+	using namespace KAPTerrain;
+	UStaticMesh* Crown = NatLoadSM(TEXT("SM_KAP_Spruce_0"));
+	UStaticMesh* Stem = NatLoadSM(TEXT("SM_KAP_Spruce_3"));
+	if (!Crown) return;
+	const double T0 = FPlatformTime::Seconds();
+	int32 J0 = 1, J1 = 1;
+	while (J1 < Mtn::NS - 2 && Mtn::SAt(J1) < 4300.f) J1++;
+	const int32 NJ = J1 - J0 + 2;
+	TArray<FVector3f> G; G.SetNumUninitialized(Mtn::NA * NJ);
+	ParallelFor(Mtn::NA, [&](int32 i) { for (int32 j = 0; j < NJ; j++) G[i * NJ + j] = Mtn::Point(i, J0 + j, [](float X, float Y) { return Height(X, Y); }); });
+	auto Gp = [&](int32 i, int32 j) -> const FVector3f& { return G[(i % Mtn::NA) * NJ + (j - J0)]; };
+	const float Spacing = 24.f;
+	TArray<FTransform> Xf;
+	for (int32 i = 0; i < Mtn::NA; i++)
+	{
+		const float Base = Gp(i, J0).Z; // шеттегі жер
+		for (int32 j = J0; j < J1; j++)
+		{
+			const FVector3f A = Gp(i, j), Bq = Gp(i + 1, j), C = Gp(i, j + 1), D = Gp(i + 1, j + 1);
+			const float Area = FMath::Abs((Bq.X - A.X) * (C.Y - A.Y) - (Bq.Y - A.Y) * (C.X - A.X));
+			// ұяшық тұқымы араластырылады: FRandomStream сызықтық, көрші тұқымдар ағаштарды қиғаш жолаққа тізіп қояды
+			uint32 Hs = (uint32)i * 374761393u + (uint32)j * 668265263u + 0x9E3779B9u; Hs = (Hs ^ (Hs >> 13)) * 1274126177u; Hs ^= Hs >> 16;
+			FRandomStream R((int32)(Hs & 0x7FFFFFFF));
+			R.GetFraction(); R.GetFraction();
+			const float Lam = Area / (Spacing * Spacing);
+			const int32 N = FMath::FloorToInt32(Lam) + (R.FRand() < FMath::Frac(Lam) ? 1 : 0);
+			for (int32 k = 0; k < N; k++)
+			{
+				const float U = R.FRand(), V = R.FRand();
+				// мештің екі үшбұрышы: (a, c, b) және (b, c, d) — диагональ b–c
+				const bool bFirst = U + V <= 1.f;
+				const FVector3f P = bFirst ? A + (Bq - A) * U + (C - A) * V : D + (C - D) * (1.f - U) + (Bq - D) * (1.f - V);
+				const FVector3f Nn = (bFirst ? FVector3f::CrossProduct(Bq - A, C - A) : FVector3f::CrossProduct(C - D, Bq - D)).GetSafeNormal();
+				if (FMath::Abs(Nn.Z) < 0.8f) continue;                                    // ≳ 37° — жартас
+				const float Alt = P.Z + 160.f * (Fbm(P.X / 2600.f + 2.2f, P.Y / 2600.f - 6.1f, 2) - 0.5f);
+				if (Alt < Base + 140.f || Alt > 2250.f) continue;
+				if (Fbm(P.X / 700.f - 3.3f, P.Y / 700.f + 1.9f, 3) < 0.4f) continue;       // ашық алаңдар, шалғын
+				const float Up = Smooth(1650.f, 2250.f, Alt);
+				if (R.FRand() < Up * 0.7f) continue;                                         // орман шекарасы сирейді
+				const float Sc = FMath::Lerp(R.FRandRange(1.25f, 2.3f), R.FRandRange(0.6f, 1.1f), Up);
+				Xf.Add(FTransform(FRotator(R.FRandRange(-3.f, 3.f), R.FRandRange(0.f, 360.f), R.FRandRange(-3.f, 3.f)), FVector(P) * 100.f - FVector(0, 0, 45.f * Sc), FVector(Sc)));
+			}
+		}
+	}
+	auto MakeI = [&](UStaticMesh* M, UMaterialInterface* Mat)
+	{
+		UInstancedStaticMeshComponent* I = NewObject<UInstancedStaticMeshComponent>(this);
+		I->SetStaticMesh(M);
+		I->SetupAttachment(RootComponent);
+		if (Mat) I->SetMaterial(0, Mat);
+		I->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		I->SetCastShadow(true);
+		I->bAffectDistanceFieldLighting = false;
+		I->SetVisibleInRayTracing(false);
+		I->SetCullDistances(0, 1100000);
+		I->RegisterComponent();
+		I->AddInstances(Xf, false, true);
+		Forest.Add(I);
+	};
+	MakeI(Crown, nullptr);
+	if (Stem) { FKAPMat Bark = FKAPMat::Paint(FLinearColor(0.2f, 0.15f, 0.11f), 0.9f); Bark.Grime = 0.6f; MakeI(Stem, KAPVis::SharedMaterial(Bark)); }
+	UE_LOG(LogTemp, Display, TEXT("KAPNATURE mountain forest: %d spruces (rings %d..%d) in %.0f ms"), Xf.Num(), J0, J1, (FPlatformTime::Seconds() - T0) * 1000.0);
 }
 
 UHierarchicalInstancedStaticMeshComponent* AKAPNature::MakeH(UStaticMesh* M, UMaterialInterface* Mat, bool bCol, float Cull, bool bShadow)

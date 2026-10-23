@@ -14,6 +14,8 @@
 #include "LandscapeGrassType.h"
 #include "Materials/MaterialExpressionLandscapeGrassOutput.h"
 
+static void CreateMountainMaterial();
+
 namespace KAPTerrainGen
 {
 	struct FSiteC { float X, Y, R; };
@@ -96,7 +98,8 @@ bool UKAPEditorLibrary::CreateTerrainTextures()
 				const float Dm = KAPTerrain::DuneMask(X, Y), Wm = KAPTerrain::WetMask(X, Y), Hm = KAPTerrain::FoothillMask(X, Y);
 				float Rd = RoadDist(D, X, Y);
 				float Site = 1.f; for (const FSiteC& Sc : D.Sites) Site = FMath::Min(Site, KAPTerrain::Smooth(Sc.R * 0.6f, Sc.R + 12.f, FMath::Sqrt(FMath::Square(X - Sc.X) + FMath::Square(Y - Sc.Y))));
-				float G = (1.f - Dm) * (1.f - Fm) * (0.35f + 0.65f * KAPTerrain::Fbm(X / 90.f + 1.7f, Y / 90.f - 3.3f, 3)) * (1.f - 0.65f * Hm);
+				float G = (1.f - Dm) * (1.f - Fm) * (0.35f + 0.65f * KAPTerrain::Fbm(X / 90.f + 1.7f, Y / 90.f - 3.3f, 3)) * (1.f - 0.15f * Hm);
+				G = FMath::Max(G, Hm * 0.5f * (1.f - Dm)); // бөктер шөпті — таудың етегі жасыл
 				G = FMath::Max(G, Wm * 0.55f) * KAPTerrain::Smooth(3.f, 11.f, Rd) * Site; // жол мен нысан маңында шөп жоқ (ландшафт шөбі де осыны оқиды)
 				float Wz; const bool bWater = KAPTerrain::WaterAt(X, Y, Wz);
 				// G — егістік маскасы; A — құм, ал егістікте егін түрі × маска (материал A/G қатынасын алады: шетінде бүлінбейді)
@@ -330,83 +333,195 @@ bool UKAPEditorLibrary::CreateTerrainMaterials()
 		KAPLogMatErrors(M);
 		SaveAsset(M);
 	}
-	// ================= M_KAP_Mountain: жартас, биікте қар, етекте шөп (бәрі әлем кеңістігінде) =================
-	{
-		UMaterial* M = NewMaterial(TEXT("M_KAP_Mountain"));
-		bool bD = false; M->SetMaterialUsage(bD, MATUSAGE_Nanite);
-		auto* WP = Expr<UMaterialExpressionWorldPosition>(M, -2400, 0);
-		UMaterialExpression* Z = MaskC(M, WP, false, false, true, -2250, 0);
-		auto* VN = Expr<UMaterialExpressionVertexNormalWS>(M, -2400, 300);
-		UMaterialExpression* Nz = MaskC(M, VN, false, false, true, -2250, 300);
-		auto* Big = Noise(M, 0.00001f, 3, -2400, 500);
-		auto* Mid = Noise(M, 0.0006f, 3, -2400, 650);
-		// қабаттар: биіктікке қарай жолақтар (шу араластырып)
-		UMaterialExpression* Strata = Op1<UMaterialExpressionFrac>(M, Op2<UMaterialExpressionAdd>(M, Mul(M, Z, K(M, 1.f / 5200.f, -2250, 800), -2100, 800), Mul(M, Mid, K(M, 0.8f, -2250, 860), -2100, 860), -1950, 800), -1800, 800);
-		UMaterialExpression* RockC = Lerp(M, Col(M, FLinearColor(0.27f, 0.25f, 0.24f), -1950, 100), Col(M, FLinearColor(0.44f, 0.4f, 0.35f), -1950, 160), Big, -1800, 120);
-		RockC = Mul(M, RockC, Op2<UMaterialExpressionAdd>(M, Mul(M, Strata, K(M, 0.22f, -1800, 900), -1650, 850), K(M, 0.85f, -1650, 910), -1500, 850), -1650, 150);
-		// етек: жайпақ төменгі беткейде шөп
-		UMaterialExpression* Low = Mul(M, Ramp(M, Nz, 0.78f, 8.f, -1950, 1100), Ramp(M, Z, 80000.f, -1.f / 30000.f, -1950, 1200), -1800, 1150);
-		UMaterialExpression* C = Lerp(M, RockC, Col(M, FLinearColor(0.32f, 0.31f, 0.17f), -1650, 1050), Low, -1500, 300);
-		// қар: 2.0 км-ден жоғары, тік емес беткейлерде
-		UMaterialExpression* Snow = Mul(M, Ramp(M, Op2<UMaterialExpressionAdd>(M, Z, Mul(M, Big, K(M, 40000.f, -1950, 1450), -1800, 1450), -1650, 1400), 205000.f, 1.f / 25000.f, -1500, 1400), Ramp(M, Nz, 0.5f, 5.f, -1500, 1550), -1350, 1450);
-		C = Lerp(M, C, Col(M, FLinearColor(0.86f, 0.88f, 0.9f), -1350, 1350), Snow, -1200, 400);
-		UMaterialEditingLibrary::ConnectMaterialProperty(C, TEXT(""), MP_BaseColor);
-		UMaterialEditingLibrary::ConnectMaterialProperty(Lerp(M, K(M, 0.88f, -1350, 1700), K(M, 0.45f, -1350, 1760), Snow, -1200, 1700), TEXT(""), MP_Roughness);
-		UMaterialEditingLibrary::RecompileMaterial(M);
-		KAPLogMatErrors(M);
-		SaveAsset(M);
-	}
+	CreateMountainMaterial();
 	return true;
+}
+
+/** Тау текстуралары (жіксіз): T_KAP_CanopyN/H — шырша төбелері (40 м тайл), T_KAP_RockN — жарықшақты жартас (25 м тайл) */
+static void KAPMountainTextures()
+{
+	const int32 S = 1024;
+	auto Wrap = [S](int32 V) { return (V % S + S) % S; };
+	auto ToNormal = [&](const TArray<float>& H, float K, TArray<FColor>& Px)
+	{
+		Px.SetNumUninitialized(S * S);
+		for (int32 y = 0; y < S; y++) for (int32 x = 0; x < S; x++)
+		{
+			const float Dx = H[y * S + Wrap(x + 1)] - H[y * S + Wrap(x - 1)], Dy = H[Wrap(y + 1) * S + x] - H[Wrap(y - 1) * S + x];
+			const FVector3f N = FVector3f(-Dx * K, -Dy * K, 1.f).GetSafeNormal();
+			Px[y * S + x] = FColor((uint8)((N.X * 0.5f + 0.5f) * 255), (uint8)((N.Y * 0.5f + 0.5f) * 255), (uint8)((N.Z * 0.5f + 0.5f) * 255), 255);
+		}
+	};
+	// ---- шырша төбелері: 40 м тайлда ~70 конус (2–4 м радиус), арасы қараңғы саңылау; бұтақтардың ұсақ бұдыры ----
+	{
+		TArray<float> H; H.SetNumZeroed(S * S);
+		FRandomStream R(20261024);
+		struct FC { float X, Y, Rr, Hh; };
+		TArray<FC> Cs;
+		const int32 G = 9;
+		for (int32 gy = 0; gy < G; gy++) for (int32 gx = 0; gx < G; gx++)
+			if (R.FRand() < 0.86f) Cs.Add({ (float)((gx + R.FRandRange(0.1f, 0.9f)) * S / G), (float)((gy + R.FRandRange(0.1f, 0.9f)) * S / G), (float)R.FRandRange(52.f, 98.f), (float)R.FRandRange(0.75f, 1.f) });
+		ParallelFor(S, [&](int32 y)
+		{
+			for (int32 x = 0; x < S; x++)
+			{
+				float Best = 0.f;
+				for (const FC& C : Cs)
+				{
+					float Dx = FMath::Abs(x - C.X), Dy = FMath::Abs(y - C.Y);
+					Dx = FMath::Min(Dx, S - Dx); Dy = FMath::Min(Dy, S - Dy);
+					const float D = FMath::Sqrt(Dx * Dx + Dy * Dy) / C.Rr;
+					if (D < 1.f)
+					{
+						// конус + бұтақ «жұлдызы» (шыршаның жоғарыдан көрінісі)
+						const float A = FMath::Atan2(y - C.Y, x - C.X);
+						const float Star = 0.06f * FMath::Sin(A * 9.f + C.X) * D;
+						Best = FMath::Max(Best, C.Hh * (1.f - FMath::Pow(D, 1.15f)) + Star);
+					}
+				}
+				const float Twig = 0.035f * KAPTerrain::Fbm(x / 9.f, y / 9.f, 2);
+				H[y * S + x] = Best + Twig;
+			}
+		});
+		TArray<FColor> Px; ToNormal(H, 26.f, Px);
+		SaveTex(TEXT("T_KAP_CanopyN"), S, Px, true, false);
+		TArray<FColor> Hp; Hp.SetNumUninitialized(S * S);
+		for (int32 i = 0; i < S * S; i++) { const uint8 V = (uint8)FMath::Clamp(FMath::Pow(FMath::Clamp(H[i], 0.f, 1.f), 0.6f) * 255.f, 0.f, 255.f); Hp[i] = FColor(V, V, V, 255); }
+		SaveTex(TEXT("T_KAP_CanopyH"), S, Hp, false, false);
+	}
+	// ---- жартас: көлбеу қабаттар + жарықшақтар (бүтін жиілікті синустар — жіксіз) ----
+	{
+		TArray<float> H; H.SetNumZeroed(S * S);
+		FRandomStream R(20261025);
+		struct FW { int32 A, B; float Ph, Amp; bool bRidge; };
+		TArray<FW> Ws;
+		for (int32 i = 0; i < 26; i++) { const int32 Fq = 1 + i / 2; Ws.Add({ R.RandRange(-Fq, Fq), R.RandRange(-Fq * 2, Fq * 2), (float)R.FRandRange(0.f, UE_TWO_PI), 1.f / (1.f + i * 0.45f), i % 3 == 0 }); }
+		ParallelFor(S, [&](int32 y)
+		{
+			for (int32 x = 0; x < S; x++)
+			{
+				float Sum = 0;
+				for (const FW& W : Ws) { const float V = FMath::Sin(UE_TWO_PI * (W.A * x + W.B * y) / S + W.Ph); Sum += W.Amp * (W.bRidge ? 1.f - 2.f * FMath::Abs(V) : V); }
+				const float Strata = 0.35f * FMath::Frac((y + 40.f * FMath::Sin(UE_TWO_PI * x / S * 2.f)) / 64.f);
+				H[y * S + x] = Sum * 0.12f + Strata;
+			}
+		});
+		TArray<FColor> Px; ToNormal(H, 9.f, Px);
+		SaveTex(TEXT("T_KAP_RockN"), S, Px, true, false);
+	}
+}
+
+/** M_KAP_Mountain: етекте құрғақ шөп, 350–2100 м — шырша орманы (төбелер текстурасы, ашық алаңдар), жоғарыда альпі шалғыны,
+ *  тік беткейде жартас, 3.2 км-ден жоғары — аздаған қар. Нормаль әлем кеңістігінде (орман/жартас бедері) */
+static void CreateMountainMaterial()
+{
+	KAPMountainTextures();
+	UTexture2D* TCn = LoadObject<UTexture2D>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_CanopyN.T_KAP_CanopyN"));
+	UTexture2D* TCh = LoadObject<UTexture2D>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_CanopyH.T_KAP_CanopyH"));
+	UTexture2D* TRn = LoadObject<UTexture2D>(nullptr, TEXT("/Game/KAP/Textures/T_KAP_RockN.T_KAP_RockN"));
+	if (!TCn || !TCh || !TRn) { UE_LOG(LogTemp, Error, TEXT("KAPTERRAIN: mountain textures missing")); return; }
+	UMaterial* M = NewMaterial(TEXT("M_KAP_Mountain"));
+	bool bD = false; M->SetMaterialUsage(bD, MATUSAGE_Nanite);
+	M->bTangentSpaceNormal = false;
+	auto Samp = [M](UTexture2D* T, UMaterialExpression* UV, EMaterialSamplerType ST, int32 X, int32 Y)
+	{
+		auto* S = Expr<UMaterialExpressionTextureSample>(M, X, Y); S->Texture = T; S->SamplerType = ST;
+		S->Coordinates.Connect(0, UV);
+		return S;
+	};
+	auto Add = [M](UMaterialExpression* A, UMaterialExpression* B, int32 X, int32 Y) { return Op2<UMaterialExpressionAdd>(M, A, B, X, Y); };
+	auto App = [M](UMaterialExpression* A, UMaterialExpression* B, int32 X, int32 Y) { auto* E = Expr<UMaterialExpressionAppendVector>(M, X, Y); UMaterialEditingLibrary::ConnectMaterialExpressions(A, TEXT(""), E, TEXT("A")); UMaterialEditingLibrary::ConnectMaterialExpressions(B, TEXT(""), E, TEXT("B")); return (UMaterialExpression*)E; };
+	auto* WP = Expr<UMaterialExpressionWorldPosition>(M, -3600, 0);
+	UMaterialExpression* Z = MaskC(M, WP, false, false, true, -3450, 0);
+	UMaterialExpression* XY = MaskC(M, WP, true, true, false, -3450, 60);
+	auto* VN = Expr<UMaterialExpressionVertexNormalWS>(M, -3600, 300);
+	UMaterialExpression* Nz = MaskC(M, VN, false, false, true, -3450, 300);
+	auto* Big = Noise(M, 0.000012f, 3, -3600, 500);     // ≈ 80 км
+	auto* Mac = Noise(M, 0.00006f, 3, -3600, 650);      // ≈ 17 км: орман шекарасы, ашық алаңдар
+	auto* Mid = Noise(M, 0.0005f, 3, -3600, 800);       // ≈ 2 км
+	auto* Fin = Noise(M, 0.006f, 2, -3600, 950);        // ≈ 170 м
+	// биіктік (м) шумен: зоналар шекарасы түзу сызық болмасын
+	UMaterialExpression* Alt = Add(Mul(M, Z, K(M, 0.01f, -3300, 0), -3150, 0), Mul(M, Op2<UMaterialExpressionSubtract>(M, Mac, K(M, 0.5f, -3300, 700), -3150, 700), K(M, 420.f, -3150, 760), -3000, 700), -2850, 0);
+	UMaterialExpression* Steep = Ramp(M, Op1<UMaterialExpressionOneMinus>(M, Nz, -3300, 300), 0.28f, 6.f, -3150, 300);      // ≳ 44° — жартас
+	UMaterialExpression* Steep2 = Ramp(M, Op1<UMaterialExpressionOneMinus>(M, Nz, -3300, 400), 0.16f, 5.f, -3150, 400);    // ≳ 33° — тасты шалғын
+	// ---- текстуралар ----
+	UMaterialExpression* CUV = Mul(M, XY, K(M, 1.f / 4000.f, -3300, 1100), -3150, 1100);
+	auto* CanN = Samp(TCn, CUV, SAMPLERTYPE_Normal, -2950, 1100);
+	auto* CanH = Samp(TCh, CUV, SAMPLERTYPE_LinearColor, -2950, 1300);
+	UMaterialExpression* CH = MaskC(M, CanH, true, false, false, -2750, 1300);
+	UMaterialExpression* XZ = App(MaskC(M, WP, true, false, false, -3450, 1500), Z, -3300, 1500), *YZ = App(MaskC(M, WP, false, true, false, -3450, 1600), Z, -3300, 1600);
+	auto* RkA = Samp(TRn, Mul(M, XZ, K(M, 1.f / 2500.f, -3150, 1560), -3050, 1500), SAMPLERTYPE_Normal, -2950, 1500);
+	auto* RkB = Samp(TRn, Mul(M, YZ, K(M, 1.f / 2500.f, -3150, 1660), -3050, 1600), SAMPLERTYPE_Normal, -2950, 1600);
+	auto* RkC = Samp(TRn, Mul(M, XY, K(M, 1.f / 2500.f, -3150, 1760), -3050, 1700), SAMPLERTYPE_Normal, -2950, 1700);
+	// ---- зоналар ----
+	UMaterialExpression* ForestBand = Mul(M, Ramp(M, Alt, 240.f, 1.f / 200.f, -2700, 0), Op1<UMaterialExpressionOneMinus>(M, Ramp(M, Alt, 1950.f, 1.f / 260.f, -2700, 80), -2550, 80), -2400, 0);
+	UMaterialExpression* Patches = Ramp(M, Add(Mid, Mul(M, Fin, K(M, 0.35f, -2850, 980), -2700, 950), -2550, 900), 0.48f, 5.f, -2400, 900);   // ашық алаңдар
+	UMaterialExpression* Forest = Mul(M, Mul(M, ForestBand, Patches, -2250, 0), Op1<UMaterialExpressionOneMinus>(M, Steep, -2400, 300), -2100, 0);
+	UMaterialExpression* Snow = Mul(M, Ramp(M, Add(Alt, Mul(M, Op2<UMaterialExpressionSubtract>(M, Fin, K(M, 0.5f, -2850, 1900), -2700, 1900), K(M, 260.f, -2700, 1960), -2550, 1900), -2400, 1900), 3150.f, 1.f / 120.f, -2250, 1900),
+		Ramp(M, Nz, 0.62f, 6.f, -2250, 2000), -2100, 1900);
+	UMaterialExpression* High = Ramp(M, Alt, 2750.f, 1.f / 250.f, -2400, 2200);   // шыңдардағы жалаңаш тас
+	UMaterialExpression* RockW = Sat(M, Add(Mul(M, Steep, Op1<UMaterialExpressionOneMinus>(M, Mul(M, Forest, K(M, 0.6f, -2250, 2380), -2100, 2380), -1950, 2380), -1800, 2300), Mul(M, High, Ramp(M, Mid, 0.3f, 3.f, -2250, 2460), -2100, 2440), -1650, 2300), -1500, 2300);
+	// ---- түстер ----
+	UMaterialExpression* DryC = Lerp(M, Col(M, FLinearColor(0.3f, 0.3f, 0.15f), -2250, 3000), Col(M, FLinearColor(0.21f, 0.25f, 0.1f), -2250, 3060), Mid, -2100, 3000);           // етектегі құрғақ дала шөбі
+	UMaterialExpression* MeadowC = Lerp(M, Col(M, FLinearColor(0.12f, 0.21f, 0.055f), -2250, 3150), Col(M, FLinearColor(0.21f, 0.27f, 0.09f), -2250, 3210), Fin, -2100, 3150);    // шалғын
+	UMaterialExpression* GrassC = Lerp(M, DryC, MeadowC, Ramp(M, Alt, 120.f, 1.f / 300.f, -2100, 3300), -1950, 3100);
+	GrassC = Lerp(M, GrassC, Col(M, FLinearColor(0.31f, 0.29f, 0.16f), -1950, 3400), Ramp(M, Alt, 2300.f, 1.f / 500.f, -2100, 3400), -1800, 3200);                          // альпі шалғыны сарғыш
+	GrassC = Lerp(M, GrassC, Col(M, FLinearColor(0.33f, 0.31f, 0.27f), -1800, 3500), Mul(M, Steep2, K(M, 0.55f, -1950, 3560), -1800, 3560), -1650, 3300);                    // тасты беткей
+	UMaterialExpression* ForC = Lerp(M, Col(M, FLinearColor(0.03f, 0.062f, 0.025f), -2250, 3700), Col(M, FLinearColor(0.06f, 0.097f, 0.035f), -2250, 3760), Add(Mul(M, Mac, K(M, 0.6f, -2400, 3820), -2250, 3820), Mul(M, Fin, K(M, 0.5f, -2400, 3880), -2250, 3880), -2100, 3820), -1950, 3700);
+	ForC = Mul(M, ForC, Add(Mul(M, CH, K(M, 0.85f, -2400, 3960), -2250, 3960), K(M, 0.35f, -2250, 4020), -2100, 3960), -1800, 3700);  // төбелер жарық, саңылаулар қараңғы
+	UMaterialExpression* RockC = Lerp(M, Col(M, FLinearColor(0.25f, 0.24f, 0.22f), -2250, 4200), Col(M, FLinearColor(0.42f, 0.39f, 0.35f), -2250, 4260), Add(Mul(M, Big, K(M, 0.5f, -2400, 4320), -2250, 4320), Mul(M, Fin, K(M, 0.5f, -2400, 4380), -2250, 4380), -2100, 4320), -1950, 4200);
+	UMaterialExpression* C = Lerp(M, GrassC, ForC, Forest, -1500, 3200);
+	C = Lerp(M, C, RockC, RockW, -1350, 3400);
+	C = Lerp(M, C, Col(M, FLinearColor(0.82f, 0.84f, 0.87f), -1350, 3600), Snow, -1200, 3500);
+	UMaterialEditingLibrary::ConnectMaterialProperty(C, TEXT(""), MP_BaseColor);
+	UMaterialExpression* Rg = Lerp(M, Lerp(M, K(M, 0.9f, -1500, 4500), K(M, 0.82f, -1500, 4560), RockW, -1350, 4500), K(M, 0.5f, -1350, 4600), Snow, -1200, 4500);
+	UMaterialEditingLibrary::ConnectMaterialProperty(Rg, TEXT(""), MP_Roughness);
+	UMaterialEditingLibrary::ConnectMaterialProperty(K(M, 0.3f, -1200, 4700), TEXT(""), MP_Specular);
+	// ---- нормаль (әлем кеңістігі): орман — төбе бұдырлары жоғарыдан, жартас — үш жазықтық ----
+	UMaterialExpression* Nc = MaskC(M, CanN, true, true, false, -2750, 1100);
+	UMaterialExpression* Pc = Mul(M, App(Nc, K(M, 0.f, -2600, 1160), -2450, 1100), Mul(M, Forest, K(M, 0.9f, -2600, 1220), -2450, 1220), -2300, 1100);
+	auto* Abs = Expr<UMaterialExpressionAbs>(M, -3300, 1800); UMaterialEditingLibrary::ConnectMaterialExpressions(VN, TEXT(""), Abs, TEXT(""));
+	UMaterialExpression* Wx = MaskC(M, Abs, true, false, false, -3150, 1800), *Wy = MaskC(M, Abs, false, true, false, -3150, 1860), *Wz = MaskC(M, Abs, false, false, true, -3150, 1920);
+	UMaterialExpression* Ra = MaskC(M, RkA, true, true, false, -2750, 1500), *Rb = MaskC(M, RkB, true, true, false, -2750, 1600), *Rc = MaskC(M, RkC, true, true, false, -2750, 1700);
+	// XZ-ге проекция (Y нормаль): (tx, 0, ty); YZ (X нормаль): (0, tx, ty); XY (Z): (tx, ty, 0)
+	UMaterialExpression* PA = Mul(M, App(App(MaskC(M, Ra, true, false, false, -2600, 1500), K(M, 0.f, -2600, 1540), -2450, 1500), MaskC(M, Ra, false, true, false, -2600, 1580), -2300, 1500), Wy, -2150, 1500);
+	UMaterialExpression* PB = Mul(M, App(App(K(M, 0.f, -2600, 1640), MaskC(M, Rb, true, false, false, -2600, 1600), -2450, 1600), MaskC(M, Rb, false, true, false, -2600, 1680), -2300, 1600), Wx, -2150, 1600);
+	UMaterialExpression* PC = Mul(M, App(Rc, K(M, 0.f, -2600, 1740), -2450, 1700), Wz, -2150, 1700);
+	UMaterialExpression* Pr = Mul(M, Add(Add(PA, PB, -2000, 1550), PC, -1850, 1600), Mul(M, RockW, K(M, 0.8f, -2000, 1760), -1850, 1760), -1700, 1600);
+	UMaterialExpression* Nw = Op1<UMaterialExpressionNormalize>(M, Add(Add(VN, Pc, -1550, 1100), Pr, -1400, 1300), -1250, 1300);
+	UMaterialEditingLibrary::ConnectMaterialProperty(Nw, TEXT(""), MP_Normal);
+	UMaterialEditingLibrary::RecompileMaterial(M);
+	KAPLogMatErrors(M);
+	SaveAsset(M);
+}
+
+bool UKAPEditorLibrary::BuildMountainAssets()
+{
+	CreateMountainMaterial();
+	const bool bM = CreateMountainMesh();
+	const bool bP = CreatePropMeshes();
+	UE_LOG(LogTemp, Display, TEXT("KAPTERRAIN mountain assets: mesh=%d props=%d"), bM, bP);
+	return bM && bP;
 }
 
 /** Шекарадағы алып таулар: ландшафт шетінен (≈150 м) басталып, 3 км шыңдарға жетеді; шығыста өзен шатқалы */
 bool UKAPEditorLibrary::CreateMountainMesh()
 {
 	using namespace KAPTerrain;
-	const int32 NA = 1600, NS = 260;
-	const float Rb0 = KAPTerrainGen::HalfM;
+	// тор мен биіктік — KAPTerrain::Mtn (ойындағы тау орманы дәл осы үшбұрыштарға отырғызылады)
+	const int32 NA = Mtn::NA, NS = Mtn::NS;
 	FMeshBuild B;
-	B.P.Reserve(NA * NS); B.N.Reserve(NA * NS); B.UV.Reserve(NA * NS);
-	auto SuperR = [&](float A) { const float C = FMath::Abs(FMath::Cos(A)), S = FMath::Abs(FMath::Sin(A)); return Rb0 / FMath::Pow(FMath::Pow(C, 10.f) + FMath::Pow(S, 10.f), 0.1f); };
-	for (int32 i = 0; i < NA; i++)
+	B.P.SetNumUninitialized(NA * NS); B.N.SetNumUninitialized(NA * NS); B.UV.SetNumUninitialized(NA * NS);
+	ParallelFor(NA, [&](int32 i)
 	{
-		const float A = i * UE_TWO_PI / NA;
-		const float Ca = FMath::Cos(A), Sa = FMath::Sin(A);
-		const float Re = SuperR(A);
-		// ландшафт шетіндегі биіктік (тігіс көрінбесін)
-		const float Ex = Ca * (Re - 3.f), Ey = Sa * (Re - 3.f);
-		const float He = Height(Ex, Ey);
 		for (int32 j = 0; j < NS; j++)
 		{
-			const float T = j / (float)(NS - 1);
-			const float S = -40.f + 15000.f * FMath::Pow(T, 1.7f);
-			const float X = Ca * (Re + S), Y = Sa * (Re + S);
-			float H;
-			if (S < 0.f) H = Height(FMath::Clamp(X, -Rb0 + 1, Rb0 - 1), FMath::Clamp(Y, -Rb0 + 1, Rb0 - 1)) - 4.f;
-			else
-			{
-				// бөктер (0–3 км): 150–450 м төбелер; негізгі жота (2–10 км): 2.4–3.6 км шыңдар; беткейлер ~20–35°
-				const float Hills = Smooth(0.f, 1400.f, S) * (90.f + 240.f * Ridged(X / 700.f + 4.1f, Y / 700.f - 2.7f, 5)) * (1.f - 0.4f * Smooth(4000.f, 10000.f, S));
-				const float Rise = FMath::Pow(Smooth(1600.f, 10500.f, S), 1.3f);
-				const float Peaks = 0.5f + 0.5f * Fbm(X / 3600.f + 3.3f, Y / 3600.f - 8.1f, 3);          // қай жотаның биік екені
-				const float Ridges = Ridged(X / 1400.f + 1.1f, Y / 1400.f + 7.7f, 6);                        // жоталар мен сайлар
-				const float Detail = Ridged(X / 260.f - 4.2f, Y / 260.f + 2.9f, 4) * Smooth(0.f, 900.f, S);
-				H = He + Hills + Rise * (1500.f + 1900.f * Peaks) * (0.55f + 0.7f * Ridges) + Detail * (18.f + 70.f * Rise);
-				// шығыстағы өзен аңғары: жоталарды кесіп өтеді, тауға қарай кеңейеді
-				if (X > Rb0 - 5.f)
-				{
-					const float Dy = FMath::Abs(Y - GorgeY(X));
-					const float Floor = GorgeFloor(X);
-					const float Cut = 1.f - Smooth(40.f, 260.f + S * 0.12f, Dy);
-					const float Bed = Dy < 14.f ? Floor + 0.6f * FMath::Square(Dy / 14.f) : Floor + 0.6f + (Dy - 14.f) * 0.08f + (Dy - 14.f) * (Dy - 14.f) * 0.0015f;
-					H = FMath::Lerp(H, FMath::Min(H, Bed), Cut * (1.f - Smooth(7000.f, 11000.f, S)));
-				}
-			}
-			B.P.Add(FVector3f(X * 100.f, Y * 100.f, H * 100.f));
-			B.N.Add(FVector3f(0, 0, 1));
-			B.UV.Add(FVector2f(i / (float)NA, T));
+			const FVector3f P = Mtn::Point(i, j, [](float X, float Y) { return Height(X, Y); });
+			B.P[i * NS + j] = P * 100.f;
+			B.N[i * NS + j] = FVector3f(0, 0, 1);
+			B.UV[i * NS + j] = FVector2f(i / (float)NA, j / (float)(NS - 1));
 		}
-	}
+	});
 	for (int32 i = 0; i < NA; i++)
 	{
 		const int32 i2 = (i + 1) % NA;

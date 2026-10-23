@@ -215,6 +215,75 @@ namespace KAPTerrain
 		return H;
 	}
 
+	// ---------------- шекарадағы таулар ----------------
+	// SM_KAP_Mountains (редактор, KAPTerrainGen.inl) мен тау орманы (ойын, KAPNature.cpp) осы торды бірдей есептейді.
+	/** Шу (−1..1) және оның туындылары (шу бірлігінде) */
+	inline float NoiseD(float X, float Z, float& Dx, float& Dz)
+	{
+		const int32 I = FMath::FloorToInt32(X), J = FMath::FloorToInt32(Z);
+		const float Fx = X - I, Fz = Z - J;
+		const float U = Fx * Fx * (3 - 2 * Fx), V = Fz * Fz * (3 - 2 * Fz), Du = 6.f * Fx * (1 - Fx), Dv = 6.f * Fz * (1 - Fz);
+		const float A = Hash(I, J), B = Hash(I + 1, J), C = Hash(I, J + 1), D = Hash(I + 1, J + 1), K = A - B - C + D;
+		Dx = 2.f * Du * ((B - A) + K * V);
+		Dz = 2.f * Dv * ((C - A) + K * U);
+		return 2.f * (A + (B - A) * U + (C - A) * V + K * U * V) - 1.f;
+	}
+	/** Эрозиялы fbm (И. Килес әдісі): тік беткейде ұсақ октавалар басылады — шыңдар дөңгеленеді, сайлар тегіс, ине-шың жоқ. ≈ −1..1 */
+	inline float Eroded(float X, float Z, int32 O, float Gain = 0.47f)
+	{
+		float S = 0.f, A = 1.f, Gx = 0.f, Gz = 0.f, Px = X, Pz = Z;
+		for (int32 k = 0; k < O; k++)
+		{
+			float Dx, Dz; const float N = NoiseD(Px, Pz, Dx, Dz);
+			Gx += Dx; Gz += Dz;
+			S += A * N / (1.f + Gx * Gx + Gz * Gz);
+			A *= Gain;
+			const float Rx = 0.8f * Px - 0.6f * Pz, Rz = 0.6f * Px + 0.8f * Pz; // октавалар бұрылады — тор іздері көрінбейді
+			Px = Rx * 2.f + 17.3f; Pz = Rz * 2.f - 9.1f;
+		}
+		return S;
+	}
+	namespace Mtn
+	{
+		/** Тор: NA бұрыш × NS сақина; S — ландшафт шетінен сыртқа қарай қашықтық (м) */
+		constexpr int32 NA = 2800, NS = 420;
+		constexpr float Len = 16000.f;
+		/** Ландшафт шетінің «жұмсақ шаршы» радиусы */
+		inline float EdgeR(float A) { const float C = FMath::Abs(FMath::Cos(A)), S = FMath::Abs(FMath::Sin(A)); return MapHalf / FMath::Pow(FMath::Pow(C, 10.f) + FMath::Pow(S, 10.f), 0.1f); }
+		inline float SAt(int32 J) { const float T = J / (float)(NS - 1); return -40.f + Len * FMath::Pow(T, 2.1f); }
+		/** Тау биіктігі (м): X, Y — орны, S — шеттен қашықтық, He — шеттегі ландшафт биіктігі */
+		inline float Height(float X, float Y, float S, float He)
+		{
+			// бұрмаланған координата: жоталар түзу емес, иіріліп жатады
+			const float Wx = X + 1100.f * (Fbm(X / 5200.f + 1.3f, Y / 5200.f - 2.1f, 2) - 0.5f), Wy = Y + 1100.f * (Fbm(X / 5200.f - 5.2f, Y / 5200.f + 3.7f, 2) - 0.5f);
+			// бөктер (0–2 км): 60–380 м дөңгелек төбелер, шетке жақын баяу көтеріледі
+			const float Hills = Smooth(0.f, 1800.f, S) * (210.f + 170.f * Eroded(Wx / 950.f + 4.1f, Wy / 950.f - 2.7f, 6)) * (1.f - 0.45f * Smooth(3000.f, 9000.f, S));
+			// негізгі жота: 1–9 км-де көтеріледі, 1.6–3.4 км шыңдар; эрозиялы беткейлер, кейбір жерде жартас
+			const float Env = FMath::Pow(Smooth(700.f, 9000.f, S), 1.15f);
+			const float Peak = Fbm(X / 6500.f + 3.3f, Y / 6500.f - 8.1f, 3);
+			const float E = Eroded(Wx / 2700.f + 1.1f, Wy / 2700.f + 7.7f, S < 4000.f ? 7 : 5);
+			float H = He + Hills + Env * (1500.f + 1900.f * Peak) * (0.63f + 0.37f * E);
+			// шығыстағы өзен шатқалы: жоталарды кесіп өтеді, тауға қарай кеңейеді
+			if (X > MapHalf - 5.f)
+			{
+				const float Dy = FMath::Abs(Y - GorgeY(X));
+				const float Floor = GorgeFloor(X);
+				const float Cut = 1.f - Smooth(40.f, 260.f + S * 0.12f, Dy);
+				const float Bed = Dy < 14.f ? Floor + 0.6f * FMath::Square(Dy / 14.f) : Floor + 0.6f + (Dy - 14.f) * 0.08f + (Dy - 14.f) * (Dy - 14.f) * 0.0015f;
+				H = FMath::Lerp(H, FMath::Min(H, Bed), Cut * (1.f - Smooth(7000.f, 11000.f, S)));
+			}
+			return H;
+		}
+		/** Тор нүктесі (I — 0..NA, тұйық; J — 0..NS−1): орны мен биіктігі (м) — мештің төбесі дәл осы */
+		inline FVector3f Point(int32 I, int32 J, TFunctionRef<float(float, float)> LandH)
+		{
+			const float A = (I % NA) * UE_TWO_PI / NA, Ca = FMath::Cos(A), Sa = FMath::Sin(A), Re = EdgeR(A), S = SAt(J);
+			const float X = Ca * (Re + S), Y = Sa * (Re + S);
+			if (S < 0.f) return FVector3f(X, Y, LandH(FMath::Clamp(X, -MapHalf + 1, MapHalf - 1), FMath::Clamp(Y, -MapHalf + 1, MapHalf - 1)) - 4.f);
+			return FVector3f(X, Y, Height(X, Y, S, LandH(Ca * (Re - 3.f), Sa * (Re - 3.f))));
+		}
+	}
+
 	/** Су беті: бар болса true, OutZ — су деңгейі (м), OutDepth — шамамен тереңдік */
 	inline bool WaterAt(float X, float Y, float& OutZ, float* OutDepth = nullptr)
 	{

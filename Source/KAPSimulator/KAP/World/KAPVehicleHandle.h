@@ -45,7 +45,30 @@ public:
 	float WindForceN = 0.f;
 	/** Дөңгелек астындағы батпақ (0..1) */
 	float MudK = 0.f;
+	// ---- есіктер мен бұзылу көрінісі (KAPVehicleDoor.cpp) ----
+	/** Есікті ашу (Side: 0 — сол/жүргізуші, 1 — оң); HoldSec өткен соң өзі жабылады, HoldSec < 0 — ашық тұрады */
+	void SwingDoor(int32 Side = 0, float HoldSec = 1.1f);
+	void CloseDoor(int32 Side = 0);
+	bool HasDoor(int32 Side = 0) const { return Doors.IsValidIndex(Side); }
+	/** Есіктің ашылу дәрежесі (0..1) */
+	float DoorOpen01(int32 Side = 0) const { return Doors.IsValidIndex(Side) ? Doors[Side].Ang / FMath::Max(1.f, Doors[Side].MaxAng) : 0.f; }
+	/** Корпус мешінің жүйесіндегі нүкте (X=0 — база ортасы, Z=0 — жер) → әлем */
+	FVector ShellToWorld(const FVector& L) const;
+	FVector WorldToShell(const FVector& W) const;
+	/** Радиатордан бу (0..1), астынан антифриз ағады; апат шамдары жыпылықтайды */
+	float SteamK = 0.f, SteamFade = 0.f; // SteamFade > 0: бу осынша секундта сөнеді
+	bool bHazard = false;
 private:
+	struct FDoorRt { USceneComponent* Hinge = nullptr; TArray<UPrimitiveComponent*> Show; float Ang = 0.f, Target = 0.f, MaxAng = 65.f, Hold = 0.f, Sign = 1.f; bool bStay = false; };
+	TArray<FDoorRt> Doors;
+	UPROPERTY() TArray<TObjectPtr<USceneComponent>> DoorParts;
+	void BuildDoors(USkeletalMeshComponent* M, const FVector& O);
+	void DoorTick(float Dt);
+	FVector ShellO = FVector::ZeroVector, GrilleLocal = FVector::ZeroVector;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> Coolant;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> HazardLens;
+	UPROPERTY() TArray<TObjectPtr<class UPointLightComponent>> HazardL;
+	float HazardT = 0.f, SteamAcc = 0.f, CoolantK = 0.f, HissCd = 0.f;
 	/** Жел, батпақ, су, шашырау (KAPVehicleEnv.cpp) */
 	void EnvTick(float Dt);
 	TArray<float> BaseFriction;
