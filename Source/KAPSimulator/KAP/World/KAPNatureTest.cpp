@@ -18,6 +18,7 @@
 #include "GameFramework/PlayerController.h"
 #include "UnrealClient.h"
 #include "TimerManager.h"
+#include "KAP/Audio/KAPAudio.h"
 #include "LandscapeProxy.h"
 #include "EngineUtils.h"
 
@@ -31,6 +32,12 @@ void AKAPNature::BeginPlay()
 		for (TActorIterator<ALandscapeProxy> It(GetWorld()); It; ++It) { NL++; NC += It->LandscapeComponents.Num(); NH += It->CollisionComponents.Num(); }
 		UE_LOG(LogTemp, Display, TEXT("KAPNATURE landscape proxies=%d comps=%d collision=%d ground(0,0)=%.1f ground(300,161)=%.1f ground(1150,0)=%.1f"), NL, NC, NH,
 			KAPVis::GroundZ(GetWorld(), 0, 0, -999.f), KAPVis::GroundZ(GetWorld(), 30000, 16100, -999.f), KAPVis::GroundZ(GetWorld(), 115000, 0, -999.f));
+		// -kapaudiocheck: пакетталған ойындағы дыбыс тексеруі (банктер, VO, ойнату), сосын шығу
+		if (FParse::Param(FCommandLine::Get(), TEXT("kapaudiocheck")))
+		{
+			FTimerHandle H1; GetWorldTimerManager().SetTimer(H1, FTimerDelegate::CreateWeakLambda(this, [this]() { if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->AudioCheck(); }), 4.f, false);
+			FTimerHandle H2; GetWorldTimerManager().SetTimer(H2, []() { FGenericPlatformMisc::RequestExit(false); }, 9.f, false);
+		}
 		if (FParse::Param(FCommandLine::Get(), TEXT("kaplanddiag"))) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, []() { FGenericPlatformMisc::RequestExit(false); }, 8.f, false); }
 	}
 }

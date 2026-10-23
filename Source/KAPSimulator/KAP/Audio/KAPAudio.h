@@ -130,6 +130,8 @@ public:
 	bool MoanAt(FVector Loc, float Pitch, float Vol, float Len, bool bFar = false);
 	/** Тест: барлық дыбысты Saved/SoundDump/*.wav етіп жазып, статистикасын логқа шығару (-kapsounddump) */
 	void DumpAll();
+	/** -kapaudiocheck: банктер, 203 VO, реплика хэштері, шынайы ойнату — логқа (KAPAudioCheck.cpp) */
+	void AudioCheck();
 	/** Тіршілік дауысы: 0 ыңырсу, 1 шыңғырық, 2 ырыл, 3 сыбыр */
 	void Creature(FVector Loc, int32 Type, float Vol = 1.f, bool bFar = false);
 	class USoundAttenuation* Atten();
