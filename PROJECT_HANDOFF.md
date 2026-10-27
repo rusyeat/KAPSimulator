@@ -1,6 +1,6 @@
 # KAP Simulator — жобаның толық құжаты (басқа ЖИ мен әзірлеушіге арналған)
 
-Жаңартылған күні: 2026-10-27. Соңғы коммит: `96f5b03` (`main`, https://github.com/rusyeat/KAPSimulator).
+Жаңартылған күні: 2026-10-27. Соңғы код коммиті: `2f7445c` (`main`, https://github.com/rusyeat/KAPSimulator).
 Құжатты Claude Code мен OpenAI Codex бірге жүргізеді. Бұл файл жобаның не екенін, не жасалғанын, кодтың қай жерде
 жатқанын, қай құралдар мен дереккөздер қолданылғанын, қалай құрастырылатынын және нені абайлау керегін бір жерде түсіндіреді.
 
@@ -20,15 +20,18 @@
 - **Almost everything is procedural/code-built:** world layout from CSV tables, terrain from `KAPTerrain.h`,
   buildings/vehicles/props from code or SDF mesh generators, UI on Canvas, cinematics in C++ (no Sequencer),
   FX without Niagara, procedural audio synth + recorded banks. Characters, animals, creatures and weapons are Blender-built.
-- **Latest playable build:** `D:\KAPSimulator\Saved\Releases\PlayerExperience_2026-10-24\Windows\KAPSimulator.exe`
-  (finished 2026-10-25; `Play.bat` and `Ойынды ашу.lnk` in the project root open it). Packaged checks 86/86
-  (21 interface + 28 weapons + 37 living world). It includes all committed work **and** Codex's uncommitted work.
-- **Git state:** `main` = commit `96f5b03`. Large uncommitted Codex work is on disk (see §14). Never commit someone else's
+- **Latest playable build:** `D:\KAPSimulator\Saved\Releases\AnimalRagdoll_2026-10-27\Windows\KAPSimulator.exe`
+  (2026-10-27; `Play.bat` and `Ойынды ашу.lnk` in the project root open it). Same tree as `PlayerExperience_2026-10-24`
+  (packaged checks 86/86) plus the animal ragdoll fix; `-kapanimaltest` passed on the package. It includes all committed work
+  **and** Codex's uncommitted work.
+- **Git state:** `main` = commit `2f7445c` (animal ragdoll fix) + this doc. Large uncommitted Codex work is on disk (see §14). Never commit someone else's
   uncommitted hunks; stage only your own.
 - **Build editor:** `D:\ue5\UE_5.8\Engine\Build\BatchFiles\Build.bat KAPSimulatorEditor Win64 Development -Project="D:\KAPSimulator\KAPSimulator.uproject" -WaitMutex`
   (Codex adds `-NoUBA -UBARootDir=D:\KAPSimulator\Saved\BuildCache\UBA -MaxParallelActions=2` because UBA can hang at the end).
 - **Test modes:** command-line flags such as `-kapexperiencetest`, `-kaplivingtest`, `-kapweaponstest`, `-kapaitest`,
-  `-kapfixshots`, `-kapnatureshots`, `-kapaudiocheck` (full table in §11), each with a `Scripts/verify_*.ps1` checker.
+  `-kapfixshots`, `-kapanimaltest`, `-kapnatureshots`, `-kapaudiocheck` (full table in §11), each with a `Scripts/verify_*.ps1` checker.
+- **Animal skeletons must have no bone scale.** Unreal's ragdoll mishandles a scaled root bone (Blender's default FBX export puts
+  x100 there). `build_animals_v1.py` now exports in centimetres (`to_cm`); physics assets come from `BuildAnimalPhysics` (§10.7).
 
 ---
 
@@ -92,9 +95,12 @@ F1 — нұсқаулық, Esc — үзіліс/баптаулар, F9 — уа�
 
 ## 2. Қазіргі күй (2026-10-27)
 
-**Ойнау үшін ең соңғы нұсқа:** `D:\KAPSimulator\Saved\Releases\PlayerExperience_2026-10-24\Windows\KAPSimulator.exe`
-(Win64 Development, 2026-10-25 аяқталды). `Play.bat` пен `Ойынды ашу.lnk` осыны ашады (ескі launcher — `Play_before_update.bat`).
-Тексеру: 86/86 (`Saved/PlayerExperience_20261024/validation.json`). Ішінде барлық коммиттелген және коммиттелмеген жұмыс бар.
+**Ойнау үшін ең соңғы нұсқа:** `D:\KAPSimulator\Saved\Releases\AnimalRagdoll_2026-10-27\Windows\KAPSimulator.exe`
+(Win64 Development, 2026-10-27). `Play.bat` пен `Ойынды ашу.lnk` осыны ашады (ескі launcher — `Play_before_update.bat`;
+алдыңғы нұсқа `PlayerExperience_2026-10-24` орнында қалды). Бұл — `PlayerExperience` ағашы + жануар рагдоллын түзету:
+`-kapanimaltest` пакетте өтті (`-userdir=Saved\Tmp\AnimalTestUserDir`), кук 0 қате / 9 ескі ескерту,
+`Binaries\Win64\KAPSimulator.exe` SHA256 `91E8E2FC…B086`. 86/86 тексеру алдыңғы нұсқада жасалған
+(`Saved/PlayerExperience_20261024/validation.json`); жаңа пакетте олар қайта іске қосылған жоқ. Ішінде барлық коммиттелген және коммиттелмеген жұмыс бар.
 
 Барлық релиздер (`Saved\Releases\`, ескілерінен жаңасына қарай; әрқайсысы алдыңғысының бәрін қамтиды):
 
@@ -109,6 +115,7 @@ F1 — нұсқаулық, Esc — үзіліс/баптаулар, F9 — уа�
 | `Weapons_2026-10-24` | Codex | Қару V2 (11 модель), ADS, оқтау, гильза, трассер, Кедр мен K-12 | `Saved/Weapons_20261024/WEAPONS_UPDATE.md` |
 | `LivingWorld_2026-10-24` | Codex | Жол қозғалысы, 4 КПП, 6 кейіпкер мен 6 тапсырма, `I` инвентарь, отыру, перне ауыстыру | `Saved/LivingWorld_20261024/LIVING_WORLD_UPDATE.md` |
 | `PlayerExperience_2026-10-24` | Codex | Қару V3, жеке сөмке, 5 бөлімді баптаулар, экранды растау/қайтару, F1 нұсқаулық | `Saved/PlayerExperience_20261024/PLAYER_EXPERIENCE_UPDATE.md` |
+| `AnimalRagdoll_2026-10-27` | Claude | Өлген жануарлар ауада ілінбей, жерге табиғи жатады (сүйек масштабы, жаңа физика ассеті) | коммит `2f7445c`, `-kapanimaltest` |
 
 Таныстыру материалдары: `Saved\Presentation\` — 10 скриншот (`01_dala_kun_batuy.png` … `10_vagon_tun.png`) және
 15 секундтық тизер `KAP_Trailer_15s.mov` (ProRes) / `.mp4`.
@@ -143,6 +150,7 @@ QAIRU тапсырмасы `C:\Users\rusya\Downloads\qairu\QAIRU_AI_Storytelling
 | 10-23 | `c22b1fb` | Сексеуіл тәжі жеңілдетілді, unity-құрастыру атау қақтығыстары |
 | 10-23 | `b82ce10` | 169 ElevenLabs дауысы импортталды, `-kapaudiocheck` |
 | 10-23 | `96f5b03` | Кіріспе: көлік бұзылуы (бу, апат шамы, антифриз), есік ашылып кейіпкер түседі, шын жүру анимациясы; NPC LOD камераға қарай; көлік есіктері; «қорап дене» → жиырылған костюм; жәшіктер жерге түсті; эрозиялы орманды таулар (75 мың шырша); бу/түтін материалы; `-kapfixshots` |
+| 10-27 | `2f7445c` | Өлген жануарлар ауада ілінбей, жерге табиғи жатады: FBX-тегі ×100 сүйек масштабы жойылды (Blender `to_cm`, бес жануар қайта экспортталып импортталды), әр сүйекке капсула мен буын шегі бар жаңа физика ассеті (`BuildAnimalPhysics`), өлгенде анимация тоқтайды, 6 с кейін денелер ұйықтайды; `-kapanimaltest` |
 
 **Коммиттелмеген (Codex, дискіде, соңғы EXE-де бар):**
 
@@ -241,7 +249,7 @@ D:\KAPSimulator
 | `World/KAPWorkshop.cpp` | Ұңғыма цехы (ангар, сирена, маяк) |
 | `World/KAPVisuals.*` | `FKAPMat` (PBR параметрлері) және пішіндерден құрастыру `KAPVis::Add`, `GroundZ` |
 | `World/KAPProjectile.*` | Молотов, сигнал шамы |
-| `World/KAPNatureTest.cpp`, `KAPFixTest.cpp` | Тест режимдері (скриншот + журнал) |
+| `World/KAPNatureTest.cpp`, `KAPFixTest.cpp` | Тест режимдері (скриншот + журнал): `-kapnatureshots`, `-kapfixshots`, `-kapanimaltest` |
 | `Audio/KAPAudio.*`, `KAPAudioBanks.cpp` | Процедуралық синтез (жел, жаңбыр, от, радио шуы, двигатель, жүрек, Гейгер…) + жазылған банктер + VO; дыбыс деңгейлері баптаудан (Codex) |
 | `Audio/KAPAudioCheck.cpp`, `KAPAudioCheckData.inl` | `-kapaudiocheck` (деректер `Scripts/gen_audio_check.ps1`-тен) |
 
@@ -258,6 +266,7 @@ D:\KAPSimulator
 | `KAPTerrainGen.inl` | Биом текстурасы, `MPC_KAPEnv`, `M_KAP_Landscape8`, `M_KAP_Water`, `M_KAP_Mountain` (+ `T_KAP_CanopyN/H`, `T_KAP_RockN`), `SM_KAP_Mountains`, ландшафтты қайта құру, `PlacePlayerStart`, `BuildMountainAssets` |
 | `KAPNatureGen.inl` | Өсімдік материалы (жел), шөп/бидай/қамыс, сексеуіл, терек/тал/қарағаш, ландшафт шөп түрлері `LGT_KAP_*` |
 | `KAPPropGen.inl` | `SM_KAP_Spruce_*` (шырша) + `M_KAP_Spruce`, `SM_KAP_SuitPile_*` (тасталған костюм), `M_KAP_Puff` (бу/түтін) |
+| `KAPAnimalPhysGen.inl` | `BuildAnimalPhysics`: жануарлардың `SKM_KAP_*_PhysicsAsset` — әр сүйекке төбелерге өлшенген капсула, аяқ/мойын/омыртқа буын шектері, қиылысқан денелердің соқтығысы өшірулі |
 
 ### 4.3 Деректер (`Content/KAP/Data/*.csv` → `DT_*`)
 
@@ -414,6 +423,10 @@ $env:TMP='D:\KAPSimulator\Saved\Tmp'; $env:TEMP=$env:TMP; $env:UE_LocalDataCache
 5. **Жаңа сөйлем қосу:** мәтінді кодқа жаз → `Scripts/vo_lines.tsv` жаңарт → `vo_script.ps1` (файл аттары) → жазба/TTS → импорт.
    Тірі кеніштің жаңа диалогтарына әлі жеке жазба жоқ.
 6. **Қару:** Blender генераторы → FBX/PNG → `import_weapons_v3.py` (3 LOD, материалдар) → `refine_weapons_v3_materials.py` → `-kapweaponstest`.
+7. **Жануарлар:** `blender.exe -b --factory-startup -P Scripts/blender/build_animals_v1.py` (`D:\steam\steamapps\common\Blender`;
+   `to_cm` бәрін сантиметрге айналдырып масштабты қолданады — FBX-те ешбір түйінде масштаб болмауы керек) →
+   `import_animals_v1.py` командлетпен (мештер, 3 LOD, анимациялар; соңында `build_animal_physics` — әр сүйекке капсула, 24 дене,
+   23 буын) → `-kapanimaltest`. Тек физиканы қайта құру: `Scripts/build_animal_physics.py` (NullRHI).
 
 ---
 
@@ -431,6 +444,7 @@ $env:TMP='D:\KAPSimulator\Saved\Tmp'; $env:TEMP=$env:TMP; $env:UE_LocalDataCache
 | `-kapvehiclegroundtest` | — | Кіріспені өткізгенде/толық кіріспеде автобус жерде, тұрақта қозғалмайды | `verify_vehicle_ground.ps1` |
 | `-kapcreaturetest` | — | Мутант пен қасқыр | `verify_creatures.ps1` |
 | `-kapfixshots` | — | Кіріспе (бұзылу, есік, шығу, жүру — аяқ бұрышы журналда), NPC жүрісі, костюм, жәшіктер, көліктен түсу, таулар (`KAPF_*.png`, `KAPFIX`/`KAPINTRO`) | журнал + скриншот |
+| `-kapanimaltest` | — | Түлкі, қой, ешкі, сиыр, жылқы пышақпен, қой көлік күшімен өлтіріледі; әр дененің жерден биіктігі, дене↔сүйек арасы (0 болуы керек), ұйқы (`KAPANIM`, `KAPA_*_alive/_dead/_dead_low.png`) | журнал + скриншот |
 | `-kapnatureshots`, `-kapdriveonly` | — | Өзен, көпір, атырап, оазис, таулар, сексеуіл, ауа райы, жел/батпақ көлік тесті, жануарлар (`KAPN_*.png`) | журнал + скриншот |
 | `-kapaudiocheck` | — | Пакеттегі дыбыс: 47 банк, 203 VO, 182 сөйлем, ойнату | журнал |
 | `-kapautotest`, `-kapperf` | — | Жалпы автотест скриншоттары, өнімділік | журнал |
@@ -455,6 +469,12 @@ $env:TMP='D:\KAPSimulator\Saved\Tmp'; $env:TEMP=$env:TMP; $env:UE_LocalDataCache
 - **Chaos көлігін** жылжытқанда тек `AKAPVehicleHandle::PlaceAt` қолдан (ескі суспензия контактілері қалмасын). Тежегіш кірісі кері
   газ болып та жұмыс істейді (`bReverseAsBrake`) — иесіз көлікке ұзақ тежегіш бермей, қол тежегішті қос.
 - **Жәшік/нүкте** қоярда жерді трассировкамен тап (`SpawnSpot` енді өзі жасайды).
+- **Қаңқалы мештерде сүйек масштабы болмасын.** Blender-дің әдепкі FBX экспорты арматура түйініне ×100 жазады, UE оны түбір
+  сүйекке (`FoxRig` т.б.) қояды; UE рагдоллы (`PerformBlendPhysicsBones`) масштабы бар түбірде сүйекті денеден ығыстырады — жануар
+  ауада ілінеді не жерге батады. UE импортындағы `convert_scene_unit`/`import_uniform_scale` көмектеспейді (масштабты қайтадан
+  түбірге қояды); түзету тек Blender жағында (`to_cm`). FBX импортының автоматты физика ассеті де бұл мештерге жарамсыз (2–5 алып дене).
+- **Өлген жануар:** меш актерде қалады (`ComponentTransformIsKinematic`), тек сүйектер денеге ереді; көлік соққан мәйіт актерден
+  9 м-ге дейін ұшуы мүмкін — мәйіттің орны керек болса, `Mesh->GetBoneLocation("pelvis")` қолдан, актер орнын емес.
 - **Экран баптауы:** ажыратымдылық өзгерісі HUD Canvas-ын жарамсыз етеді — қайтаруды келесі tick-ке қалдыр.
 - **Codex шейдер жұмысшыларын шектеген** (`DefaultEngine.ini [DevOptions.Shaders]`) — шейдері көп командлеттер баяу.
 - Ұзын жолдар: скретч папкасының жолы 260 таңбадан асып кетеді — уақытша файлдарды `D:\KAPSimulator\Saved\Tmp`-ға жаз.
