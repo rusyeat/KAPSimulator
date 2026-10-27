@@ -180,6 +180,26 @@ def export(arm, objs, name, anim):
                              path_mode='COPY', embed_textures=False, mesh_smooth_type='FACE', colors_type='LINEAR')
 
 
+CM = 100.0
+
+
+def to_cm(arm, objs):
+    """Экспорт алдында бәрін 100 есе үлкейтіп, масштабты қолданамыз, сахна бірлігі = 1 см.
+    Әйтпесе FBX-те арматура түйініне ×100 масштаб жазылады, UE оны түбір сүйекке (…Rig) қояды, ал UE рагдоллы
+    масштабы бар түбір сүйекті дұрыс есептемейді: сүйектер физика денелерінен ығысып, жануар ауада ілінеді/жерге батады."""
+    bpy.context.scene.unit_settings.scale_length = 1.0 / CM
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in [arm] + objs:
+        if o.parent is None:
+            o.scale = (CM, CM, CM)
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    bpy.context.view_layer.update()
+    for o in [arm] + objs:
+        assert max(abs(s - 1.0) for s in o.matrix_world.to_scale()) < 1e-4, (o.name, tuple(o.matrix_world.to_scale()))
+
+
 def leg_bones(bones, side, part, pts, parent):
     for j in range(4):
         bones['%s%d_%s' % (part, j, side)] = (pts[j], pts[j + 1], parent if j == 0 else '%s%d_%s' % (part, j - 1, side))
@@ -199,6 +219,7 @@ def animate(arm, name, a):
 
     def key(f):
         for pb in PB:
+            pb.location = pb.location * CM   # сүйек кеңістігі енді сантиметрде (to_cm)
             pb.keyframe_insert('rotation_euler', frame=f); pb.keyframe_insert('location', frame=f); pb.keyframe_insert('scale', frame=f)
 
     def gait(kind, frames, amp, duty, phases, lift, bob, nod, spine=0.0):
@@ -370,6 +391,13 @@ def quadruped(name, spec):
     eye.parent = arm
     md = eye.modifiers.new('Skeleton', 'ARMATURE'); md.object = arm
     objs = [body, eye]
+    zmax0 = max((body.matrix_world @ v.co).z for v in body.data.vertices)
+    pz0 = (arm.matrix_world @ arm.data.bones['pelvis'].head_local).z
+    to_cm(arm, objs)
+    zmax1 = max((body.matrix_world @ v.co).z for v in body.data.vertices)
+    pz1 = (arm.matrix_world @ arm.data.bones['pelvis'].head_local).z
+    assert abs(zmax1 - zmax0 * CM) < 0.5 and abs(pz1 - pz0 * CM) < 0.5, (name, zmax0, zmax1, pz0, pz1)
+    print('KAPANIMAL %s to_cm: top %.3f m -> %.1f cm, pelvis %.3f m -> %.1f cm' % (name, zmax0, zmax1, pz0, pz1))
     export(arm, objs, 'SKM_KAP_' + name, False)
     tri = sum(len(p.vertices) - 2 for o in objs for p in o.data.polygons)
     anims = animate(arm, name, {'leg': spec['leg'], 'amp': spec['amp'], 'lift': spec['lift'], 'scale': spec['scale'], 'gaits': spec['gaits'], 'graze': spec.get('graze'), 'objs': objs})

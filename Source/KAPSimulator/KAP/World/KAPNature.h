@@ -43,6 +43,8 @@ public:
 	void RunShots();
 	/** -kapfixshots: кіріспе (есік, шығу, бу), NPC жүрісі, ұңғыма жанындағы костюм, жәшіктер, таулар (KAPFixTest.cpp) */
 	void RunFixShots();
+	/** -kapanimaltest: әр жануарды өлтіріп, рагдоллдың жерге түсуін тексеру (KAPFixTest.cpp) */
+	void RunAnimalTest();
 	void DriveTest(class AKAPGameMode* GM, int32 Mode);
 	void AnimalShot(int32 Herd, TFunctionRef<void(FVector2D, FVector2D, float, float)> Go, float Dist, float Up);
 	TWeakObjectPtr<class AKAPNPC> TestNPC;

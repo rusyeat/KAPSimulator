@@ -1,4 +1,5 @@
 """SourceArt/AnimalsV1 (Blender, build_animals_v1.py) → /Game/KAP/Animals/V1: қаңқалы мештер, физика (рагдолл), қашықтық LOD-тары, анимациялар.
+FBX сантиметрде, сүйектерде масштаб жоқ (build_animals_v1.to_cm). Физика ассеті соңында KAPEditorLibrary.build_animal_physics арқылы қайта құрылады.
 Материал — M_KAP_Animal (KAPEditorLibrary.create_animal_material)."""
 import unreal, json, traceback
 from pathlib import Path
@@ -16,7 +17,8 @@ def task(path, name, skeleton=None, anim=False):
     ui = unreal.FbxImportUI()
     for p, v in dict(import_as_skeletal=True, mesh_type_to_import=unreal.FBXImportType.FBXIT_ANIMATION if anim else unreal.FBXImportType.FBXIT_SKELETAL_MESH,
                      automated_import_should_detect_type=False, import_mesh=not anim, import_animations=anim, import_materials=False, import_textures=False,
-                     create_physics_asset=not anim, skeleton=skeleton).items():
+                     create_physics_asset=not anim and not unreal.EditorAssetLibrary.does_asset_exist(DEST + '/' + name + '_PhysicsAsset'),
+                     skeleton=skeleton).items():
         ui.set_editor_property(p, v)
     sk = ui.get_editor_property('skeletal_mesh_import_data')
     sk.set_editor_property('update_skeleton_reference_pose', not anim)
@@ -75,6 +77,8 @@ try:
                          physics=str(mesh.get_editor_property('physics_asset'))))
         unreal.log('KAPANIMAL imported %s lods=%d anims=%s extent=(%.0f %.0f %.0f)' % (nm, lods, anims, b.box_extent.x, b.box_extent.y, b.box_extent.z))
     unreal.EditorAssetLibrary.save_directory(DEST, only_if_is_dirty=True, recursive=True)
+    # рагдолл: әр сүйекке капсула, буын шектері (FBX импортының автоматты ассеті 2–5 үлкен денемен шығады)
+    assert unreal.KAPEditorLibrary.build_animal_physics(), 'build_animal_physics'
     REPORT.write_text(json.dumps(dict(status='done', rows=ROWS), indent=2))
     unreal.log('KAPANIMAL IMPORT DONE')
 except Exception:

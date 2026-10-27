@@ -16,6 +16,10 @@
 #include "KAP/Core/KAPGameInstance.h"
 #include "KAP/Player/KAPCharacter.h"
 #include "KAP/NPC/KAPNPC.h"
+#include "KAP/NPC/KAPAnimal.h"
+#include "Kismet/GameplayStatics.h"
+#include "PhysicsEngine/BodyInstance.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -214,4 +218,109 @@ void AKAPNature::RunFixShots()
 		if (AKAPCharacter* P = GM->Player()) if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) { if (PC->GetPawn() != P) PC->Possess(P); PC->SetViewTarget(P); }
 		for (const FStep& S : *Sh) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateWeakLambda(this, [F = S.F]() { F(); }), S.T, false); }
 	}), 0.2f, true);
+}
+
+// -kapanimaltest: әр жануар түрін камера алдында өлтіріп, рагдоллдың жерге дұрыс түскенін тексеру (KAPA_*.png, KAPANIM журналы):
+// физика денелерінің ең төменгі нүктесі мен жердің арасы, мештің көрінетін шекарасы, дене/буын саны
+void AKAPNature::RunAnimalTest()
+{
+	AKAPGameMode* GM = AKAPGameMode::Get(this);
+	if (!GM) return;
+	auto Shot = [](const FString& N) { FScreenshotRequest::RequestScreenshot(TEXT("KAPA_") + N + TEXT(".png"), true, false); };
+	auto Ground = [this](float X, float Y) { return KAPVis::GroundZ(GetWorld(), X, Y, 0.f); };
+	auto Go = [this, GM](FVector Cm, FVector LookCm)
+	{
+		AKAPCharacter* P = GM->Player(); APlayerController* PC = GetWorld()->GetFirstPlayerController(); if (!P || !PC) return;
+		P->GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+		P->GetCharacterMovement()->StopMovementImmediately();
+		P->SetActorLocation(Cm, false, nullptr, ETeleportType::TeleportPhysics);
+		PC->SetControlRotation((LookCm - Cm).Rotation());
+	};
+	// рагдолл есебі: әр дененің төменгі нүктесі жерден қанша жоғары, мештің шекарасы
+	auto Report = [this, Ground](AKAPAnimal* A, const TCHAR* Tag)
+	{
+		if (!A || !A->Mesh) return;
+		USkeletalMeshComponent* M = A->Mesh;
+		float MinGap = 1e9f, MaxGap = -1e9f, Mis = 0.f; int32 Sim = 0, Awake = 0;
+		for (FBodyInstance* B : M->Bodies)
+		{
+			if (!B || !B->IsValidBodyInstance()) continue;
+			// дене мен сүйектің арасы (меш денеден ығыспауы керек)
+			if (B->BodySetup.IsValid()) Mis = FMath::Max(Mis, (float)FVector::Dist(B->GetUnrealWorldTransform().GetLocation(), M->GetBoneLocation(B->BodySetup->BoneName)));
+			const FBox Bx = B->GetBodyBounds();
+			const FVector C = Bx.GetCenter();
+			const float Gap = Bx.Min.Z - Ground(C.X, C.Y);
+			MinGap = FMath::Min(MinGap, Gap); MaxGap = FMath::Max(MaxGap, Gap);
+			Sim += B->IsInstanceSimulatingPhysics() ? 1 : 0; Awake += B->IsInstanceAwake() ? 1 : 0;
+		}
+		const FBoxSphereBounds Mb = M->CalcBounds(M->GetComponentTransform());
+		auto BoneGap = [M, Ground](FName B) { const FVector P = M->GetBoneLocation(B); return P.Z - Ground(P.X, P.Y); };
+		const FVector Pv = M->GetBoneLocation("pelvis");
+		UE_LOG(LogTemp, Display, TEXT("KAPANIM %s %s: bodies=%d sim=%d awake=%d bodyGap min=%.1f max=%.1f cm body-bone=%.1f | pelvis-ground=%.1f head-ground=%.1f moved=%.0f cm extent=(%.0f %.0f %.0f) constraints=%d"),
+			*UEnum::GetValueAsString(A->Kind), Tag, M->Bodies.Num(), Sim, Awake, MinGap, MaxGap, Mis, BoneGap("pelvis"), BoneGap("head"), FVector::Dist2D(Pv, A->GetActorLocation()),
+			Mb.BoxExtent.X, Mb.BoxExtent.Y, Mb.BoxExtent.Z, M->Constraints.Num());
+	};
+	TSharedRef<TWeakObjectPtr<AKAPAnimal>> Cur = MakeShared<TWeakObjectPtr<AKAPAnimal>>();
+	struct FStep { float T; TFunction<void()> F; };
+	TArray<FStep> St = {
+		{ 3.f, [GM]() { if (GM->bInMenu) GM->MenuNewGame(); } },
+		{ 6.f, [GM]() { if (GM->bInMenu) GM->MenuNewGame(); } },
+		{ 10.f, [GM]() { if (GM->bCinematic) GM->SkipCinematic(); } },
+		{ 12.f, [this, GM]() {
+			if (GM->bCinematic) GM->SkipCinematic();
+			GM->Weather->bOverride = true; GM->Weather->OverrideType = EWeatherType::Clear; GM->Weather->bInstant = true;
+			GM->S().Time = FMath::FloorToDouble(GM->S().Time / 24) * 24 + 24.0 + 11.0;
+			if (AKAPCharacter* P = GM->Player()) if (APlayerController* PC = GetWorld()->GetFirstPlayerController()) { if (PC->GetPawn() != P) PC->Possess(P); PC->SetViewTarget(P); }
+		} },
+	};
+	// соңғысы — көлік соққандай күшті итеру (≈9 м/с): рагдолл «жарылмай», жерге түсуі керек
+	const EAnimalKind Kinds[6] = { EAnimalKind::Fox, EAnimalKind::Sheep, EAnimalKind::Goat, EAnimalKind::Cow, EAnimalKind::Horse, EAnimalKind::Sheep };
+	for (int32 k = 0; k < 6; k++)
+	{
+		const float T0 = 14.f + k * 14.f;
+		const EAnimalKind Kd = Kinds[k];
+		const bool bCar = k == 5;
+		const FString Nm = UEnum::GetValueAsString(Kd).RightChop(13) + (bCar ? TEXT("_car") : TEXT(""));
+		// жақын тірі жануарды тауып, бүйірінен 5 м жерге тұру
+		St.Add({ T0, [this, Kd, Cur, Go, Ground]() {
+			*Cur = nullptr;
+			AKAPFauna* F = AKAPFauna::Get(GetWorld()); if (!F) return;
+			for (const auto& A : F->Animals) if (A.IsValid() && A->Kind == Kd && !A->IsDead()) { *Cur = A; break; }
+			if (AKAPAnimal* A = Cur->Get())
+			{
+				const FVector P = A->GetActorLocation(), Rt = A->GetActorRightVector();
+				const FVector Cam = P + Rt * 480.f;
+				Go(FVector(Cam.X, Cam.Y, Ground(Cam.X, Cam.Y) + 165.f), P + FVector(0, 0, 40));
+			}
+			else UE_LOG(LogTemp, Warning, TEXT("KAPANIM no alive %s"), *UEnum::GetValueAsString(Kd));
+		} });
+		St.Add({ T0 + 1.5f, [Shot, Nm]() { Shot(Nm + TEXT("_alive")); } });
+		// ойыншы пышақпен ұрғандай: ApplyDamage → TakeDamage → Die
+		St.Add({ T0 + 2.f, [this, GM, Cur, Report, bCar]() {
+			AKAPAnimal* A = Cur->Get(); if (!A) return;
+			if (bCar) A->Die(A->GetActorForwardVector() * 900.f + FVector(0, 0, 300.f));   // KAPAnimal::Tick көлік соққысы: Vv·0.6 + 300
+			else UGameplayStatics::ApplyDamage(A, 9999.f, nullptr, GM->Player(), nullptr);
+			Report(A, TEXT("t+0"));
+		} });
+		St.Add({ T0 + 4.f, [Cur, Report]() { Report(Cur->Get(), TEXT("t+2")); } });
+		St.Add({ T0 + 9.f, [Cur, Report, Shot, Nm, Go, Ground]() {
+			AKAPAnimal* A = Cur->Get(); if (!A) return;
+			Report(A, TEXT("t+7"));
+			// мешке қарай қайта бағыттау (рагдолл орнынан ауысқан)
+			const FVector P = A->Mesh->Bounds.Origin;
+			Go(FVector(P.X + 330.f, P.Y + 260.f, Ground(P.X + 330.f, P.Y + 260.f) + 165.f), P);
+		} });
+		St.Add({ T0 + 10.5f, [Shot, Nm]() { Shot(Nm + TEXT("_dead")); } });
+		// төмен, жақын бұрыш: жерге жатқаны көрінсін
+		St.Add({ T0 + 11.f, [Cur, Go, Ground]() {
+			AKAPAnimal* A = Cur->Get(); if (!A) return;
+			const FVector P = A->Mesh->Bounds.Origin;
+			const float Dd = FMath::Max(170.f, A->Mesh->Bounds.SphereRadius * 2.6f);
+			const FVector Cm(P.X - Dd * 0.8f, P.Y + Dd * 0.6f, 0.f);
+			Go(FVector(Cm.X, Cm.Y, Ground(Cm.X, Cm.Y) + 55.f), FVector(P.X, P.Y, Ground(P.X, P.Y) + 10.f));
+		} });
+		St.Add({ T0 + 12.3f, [Shot, Nm]() { Shot(Nm + TEXT("_dead_low")); } });
+	}
+	St.Add({ 14.f + 6 * 14.f + 1.f, []() { FGenericPlatformMisc::RequestExit(false); } });
+	for (FStep& S : St) { FTimerHandle H; GetWorldTimerManager().SetTimer(H, FTimerDelegate::CreateWeakLambda(this, [F = S.F]() { F(); }), S.T, false); }
 }

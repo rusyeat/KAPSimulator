@@ -172,7 +172,8 @@ float AKAPAnimal::TakeDamage(float Damage, FDamageEvent const& Event, AControlle
 	Hp -= Damage;
 	if (AKAPFXManager* FX = AKAPFXManager::Get(GetWorld())) FX->Spawn(EKAPFX::Blood, GetActorLocation() + FVector(0, 0, AnimalDefs[(int32)Kind].Height * 60.f), 1.f);
 	const FVector From = Causer ? Causer->GetActorLocation() : GetActorLocation() - GetActorForwardVector() * 500.f;
-	if (Hp <= 0.f) Die((GetActorLocation() - From).GetSafeNormal() * 600.f + FVector(0, 0, 200.f));
+	// пышақ/оқ: жеңіл итеру (1.6 м/с) — жануар орнында құлайды, ұшып кетпейді
+	if (Hp <= 0.f) Die((GetActorLocation() - From).GetSafeNormal2D() * 160.f + FVector(0, 0, 40.f));
 	else Scare(From, 1.f);
 	return Damage;
 }
@@ -184,11 +185,19 @@ void AKAPAnimal::Die(const FVector& Impulse)
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (Fauna.IsValid()) Fauna->Killed++;
 	if (UKAPAudio* Au = UKAPAudio::Get(this)) Au->Creature(GetActorLocation() + FVector(0, 0, 80), 1, 0.6f);
-	// рагдолл: импортта жасалған физика ассеті
+	// рагдолл: әр сүйекке капсула (UKAPEditorLibrary::BuildAnimalPhysics). Анимация тоқтайды,
+	// URO өшеді — әйтпесе денелер кадр аттап, аяқтар бұрынғы жүріс қалпында қалады
 	if (Mesh->GetPhysicsAsset())
 	{
+		Mesh->Stop();
+		// компонент актерде қалады, тек сүйектер денелерге ереді: сүйектерде ×100 масштаб бар (FBX), ал түбір
+		// денесі компонентті өзімен бірге жылжытса, меш денелерден ығысып жер астына түсіп кетеді (қой, сиыр)
+		Mesh->PhysicsTransformUpdateMode = EPhysicsTransformUpdateMode::ComponentTransformIsKinematic;
+		Mesh->bEnableUpdateRateOptimizations = false;
+		Mesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
 		Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+		Mesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 		Mesh->SetAllBodiesSimulatePhysics(true);
 		Mesh->SetSimulatePhysics(true);
 		Mesh->WakeAllRigidBodies();
@@ -374,7 +383,14 @@ void AKAPAnimal::Tick(float Dt)
 	Super::Tick(Dt);
 	if (State == EAnimalState::Dead)
 	{
+		const float Was = DeadT;
 		DeadT += Dt;
+		// 6 с кейін рагдолл орнықты: денелерді ұйықтатып, көрінбегенде сүйектерді жаңартпаймыз (CPU)
+		if (Was <= 6.f && DeadT > 6.f && Mesh->IsAnySimulatingPhysics())
+		{
+			Mesh->PutAllRigidBodiesToSleep();
+			Mesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+		}
 		if (DeadT > 180.f) Destroy();
 		return;
 	}

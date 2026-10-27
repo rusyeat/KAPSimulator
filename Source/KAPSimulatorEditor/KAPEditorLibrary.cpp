@@ -1168,3 +1168,4 @@ bool UKAPEditorLibrary::BuildEverything(const FString& MapPath)
 #include "KAPTerrainGen.inl"
 #include "KAPNatureGen.inl"
 #include "KAPPropGen.inl"
+#include "KAPAnimalPhysGen.inl"

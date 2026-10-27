@@ -59,4 +59,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildMountainAssets();
 	/** Шырша (SM_KAP_Spruce + M_KAP_Spruce), ұңғыма маңындағы тасталған қорғаныш костюмі (SM_KAP_SuitPile_*) */
 	UFUNCTION(BlueprintCallable, Category = "KAP") static bool CreatePropMeshes();
+	/** Жануар рагдоллы: әр сүйекке капсула, буын шектері (KAPAnimalPhysGen.inl) */
+	UFUNCTION(BlueprintCallable, Category = "KAP") static bool BuildAnimalPhysics();
 };
