@@ -28,6 +28,7 @@ void AKAPNature::BeginPlay()
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapnatureshots"))) RunShots();
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapfixshots"))) RunFixShots();
 	if (FParse::Param(FCommandLine::Get(), TEXT("kapanimaltest"))) RunAnimalTest();
+	if (FParse::Param(FCommandLine::Get(), TEXT("kapstorytest"))) if (AKAPGameMode* GM = AKAPGameMode::Get(this)) GM->StartStoryTest();
 	// ландшафт диагностикасы: проксилер, компоненттер, соқтығыс, жер биіктігі
 	{
 		int32 NL = 0, NC = 0, NH = 0;

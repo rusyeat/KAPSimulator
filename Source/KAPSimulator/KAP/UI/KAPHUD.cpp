@@ -663,13 +663,16 @@ void AKAPHUD::DrawDialog()
 {
 	const float VW = Canvas->ClipX / Sc;
 	const float W = FMath::Min(900.f, VW - 80), X = VW / 2 - W / 2;
-	const float TH = Measure(DText, 17).X / (W - 40) * 26 + 26 * (1 + DText.Len() / 400) + 40;
+	// мәтін биіктігі: әр абзац (\n) жеке жолдарға бөлінеді; батырмалар терезенің астыңғы жиегіне бекітіледі — экраннан шықпайды
+	float Lines = 0.f;
+	{ TArray<FString> Paras; DText.ParseIntoArray(Paras, TEXT("\n"), false); for (const FString& Pp : Paras) Lines += FMath::Max(1.f, FMath::CeilToFloat(Measure(Pp, 17).X / (W - 40) * 1.12f)); }
+	const float TH = Lines * 26.f + 30;
 	const float H = 70 + TH + DOpts.Num() * 46;
-	const float Y = 1080 - H - 80;
+	const float Y = FMath::Max(16.f, 1080 - H - 80);
 	Rect(X, Y, W, H, FLinearColor(0.06f, 0.06f, 0.05f, 0.95f)); Frame(X, Y, W, H, FLinearColor(Amber.R, Amber.G, Amber.B, 0.4f), 1);
 	Txt(X + 20, Y + 14, DName, 18, Amber);
-	const float Ph = Para(X + 20, Y + 46, W - 40, DText, 17, Txtc);
-	float Yy = Y + 56 + Ph;
+	Para(X + 20, Y + 46, W - 40, DText, 17, Txtc);
+	float Yy = Y + H - 10 - DOpts.Num() * 46;
 	for (int32 i = 0; i < DOpts.Num(); i++)
 	{
 		const FKAPDialogOption O = DOpts[i];
@@ -1239,7 +1242,7 @@ void AKAPHUD::DrawMinigame(float Dt)
 	Rect(X - 16, Y - 70, W + 32, H + 140, FLinearColor(0.08f, 0.09f, 0.1f, 0.98f)); Frame(X - 16, Y - 70, W + 32, H + 140, FLinearColor(0.23f, 0.23f, 0.19f), 2);
 	static const TMap<FString, FString> Names = { { TEXT("valve"), TEXT("Клапан бұрау") }, { TEXT("wires"), TEXT("Сымды жалғау") }, { TEXT("part"), TEXT("Бөлшекті ауыстыру") }, { TEXT("pressure"), TEXT("Қысымды теңестіру") }, { TEXT("fire"), TEXT("Өртті сөндіру") } };
 	UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
-	auto StepName = [&](const FString& S) { FString K, It; if (!S.Split(TEXT(":"), &K, &It)) K = S; return Names.FindRef(K) + (It.IsEmpty() ? FString() : TEXT(" (") + D->ItemName(FName(*It)) + TEXT(")")); };
+	auto StepName = [&](const FString& S) { FString K, It; if (!S.Split(TEXT(":"), &K, &It)) K = S; const FString* Nm = Names.Find(K); return (Nm ? *Nm : K) + (It.IsEmpty() ? FString() : TEXT(" (") + D->ItemName(FName(*It)) + TEXT(")")); };
 	Txt(VW / 2, Y - 56, MG.Title + TEXT(" — ") + StepName(MG.Steps[MG.I]), 22, Amber, 1);
 	Rect(X, Y, W, H, FLinearColor(0.04f, 0.05f, 0.06f, 1));
 	FString Steps; for (int32 i = 0; i < MG.Steps.Num(); i++) Steps += (i < MG.I ? TEXT("+ ") : i == MG.I ? TEXT("> ") : TEXT("· ")) + StepName(MG.Steps[i]) + TEXT("    ");
@@ -1373,6 +1376,17 @@ void AKAPHUD::DrawMinigame(float Dt)
 		Rect(X + 120, Y + H - 40, W - 240, 14, FLinearColor(0.15f, 0.15f, 0.15f)); Rect(X + 120, Y + H - 40, (W - 240) * FMath::Min(1.f, MG.K / 12.f), 14, CBlue);
 		Txt(VW / 2, Y + H - 70, FString::Printf(TEXT("Сөндірілді: %d / 12"), MG.K), 16, Txtc, 1);
 		bDone = MG.K >= 12;
+	}
+	else
+	{
+		// Еркін мәтінді қадам (мыс. «Кабельді жалғау»): басып ұстап орындалады. Бұрын мұндай қадам ешқашан аяқталмайтын.
+		Hint = TEXT("Тышқанды немесе Space-ті басып ұстап тұрыңыз");
+		MG.T = FMath::Clamp(MG.T + ((bDown || bSpaceDown) ? Dt : -Dt * 0.6f), 0.f, 3.f);
+		Disc(C, 110, FLinearColor(0.2f, 0.22f, 0.24f));
+		Circle(C, 110 + FMath::Sin(MG.T * 9.f) * 4.f, Amber, 6, 40);
+		Txt(C.X, C.Y - 12, MG.Kind, 18, Txtc, 1);
+		Rect(X + 120, Y + H - 40, W - 240, 14, FLinearColor(0.15f, 0.15f, 0.15f)); Rect(X + 120, Y + H - 40, (W - 240) * FMath::Min(1.f, MG.T / 2.5f), 14, CGreen);
+		bDone = MG.T >= 2.5f;
 	}
 	Txt(VW / 2, Y + H + 18, Hint, 15, FLinearColor(0.8f, 0.74f, 0.61f), 1);
 	if (bDone) MGStepDone();

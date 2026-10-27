@@ -22,9 +22,9 @@ void UWellManagerSubsystem::NewGameState(FKAPSession& S)
 {
 	S.Wells.Reset();
 	for (int32 i = 0; i < Wells.Num(); i++) { FKAPWellSave W; W.Stress = Rng.FRand() * 0.3f; S.Wells.Add(W); }
-	// Кіріспедегі ақаулар: №1 (туториал), №7, №13
+	// Дауылдан қалған ақаулар: №1 (туториал), №3 (Ерланның ұңғымасы), №7, №13 — алғашқы жұмыс көлемі белгілі, кездейсоқ ақау сирек
 	auto Pre = [&](int32 Id, EFaultType F, float T) { FKAPWellSave& W = S.Wells[Id - 1]; W.State = EWellState::Fault; W.Fault = F; W.Timer = T; };
-	Pre(1, EFaultType::Pump, 40); Pre(7, EFaultType::Electric, 14); Pre(13, EFaultType::Acid, 16);
+	Pre(1, EFaultType::Pump, 40); Pre(3, EFaultType::Pipe, 30); Pre(7, EFaultType::Electric, 22); Pre(13, EFaultType::Acid, 26);
 	CreateWorkers(S);
 }
 
@@ -110,6 +110,18 @@ double UWellManagerSubsystem::Hazard(int32 Index) const
 	return (D ? D->Cfg("hazardScale", 0.06f) : 0.06) * Wells[Index].FailProb;
 }
 
+bool UWellManagerSubsystem::CanRandomFault(const FKAPSession& S, int32 Index) const
+{
+	// Жаңа ғана жөнделген ұңғыма біраз уақыт тыныш тұрады
+	if (const double* Until = S.Flags.Find(FName(*FString::Printf(TEXT("wg%d"), Index + 1)))) if (S.Time < *Until) return false;
+	// Бір мезгілде ашық тұрған ақау шектеулі: ойыншы бірінен соң бірін жөндеп үлгереді
+	const UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this);
+	const int32 Cap = (int32)(S.bBrigadesUnlocked ? (D ? D->Cfg("maxOpenFaults", 3) : 3) : (D ? D->Cfg("maxOpenFaultsEarly", 2) : 2));
+	int32 Open = 0;
+	for (const FKAPWellSave& W : S.Wells) if (W.State == EWellState::Fault || W.State == EWellState::Leak) Open++;
+	return Open < Cap;
+}
+
 double UWellManagerSubsystem::TimeToFailure(const FKAPSession& S, int32 Index) const
 {
 	const FKAPWellSave& W = S.Wells[Index];
@@ -153,6 +165,7 @@ void UWellManagerSubsystem::RepairWell(FKAPSession& S, int32 Index)
 	FKAPWellSave& W = S.Wells[Index];
 	W.State = EWellState::Ok; W.Fault = EFaultType::None; W.Timer = 0; W.Stress = 0; W.Repaired++;
 	Wells[Index].Pressure = Wells[Index].Row.BasePressure;
+	if (const UKAPDataSubsystem* D = UKAPDataSubsystem::Get(this)) S.Flags.Add(FName(*FString::Printf(TEXT("wg%d"), Index + 1)), S.Time + D->Cfg("faultGraceHours", 10));
 	S.WellsRepaired++;
 	RefreshVisual(S, Index);
 }
@@ -243,10 +256,10 @@ void UWellManagerSubsystem::Simulate(FKAPSession& S, double Dh, float EnvTemp, f
 			W.Stress = FMath::Clamp(W.Stress + (float)Dh * (0.04f * Heat + 0.06f * NeighborBad(S, i) - 0.03f) + (Rng.FRand() - 0.5f) * 0.05f * (float)Dh, 0.f, 1.2f);
 			R.Pressure = R.Row.BasePressure + W.Stress * 0.9f + FMath::Sin((float)S.Time * 1.3f + i) * 0.05f;
 			R.Flow = 9.f + (i % 5) - W.Stress * 2.f;
-			if (S.bSimActive && Rng.FRand() < Hazard(i) * Dh)
+			if (S.bSimActive && Rng.FRand() < Hazard(i) * Dh && CanRandomFault(S, i))
 				StartFault(S, i, Rain > 0.3f && Rng.FRand() < 0.5f ? EFaultType::Electric : EFaultType::None, TEXT(""));
-			else if (S.bSimActive && R.Row.Region == 3 && !S.Flags.Contains("banditCleared") && Rng.FRand() < 0.008 * Dh)
-				StartFault(S, i, EFaultType::Pipe, TEXT("бандиттер бөлшек ұрлады"));
+			else if (S.bSimActive && R.Row.Region == 3 && !S.Flags.Contains("banditCleared") && Rng.FRand() < 0.004 * Dh && CanRandomFault(S, i))
+				StartFault(S, i, EFaultType::Pipe, TEXT("Сапардың адамдары бөлшек ұрлады"));
 			break;
 		}
 		case EWellState::Fault:

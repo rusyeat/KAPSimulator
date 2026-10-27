@@ -1023,6 +1023,7 @@ void AKAPGameMode::StartQuest(FName Id, bool bAnnounce)
 {
 	FKAPSession& Ss = S();
 	if (Ss.Quests.Contains(Id)) return;
+	StorySpawnPeople(); // Мәрия апа; сюжет нысандарын қайта қою
 	Ss.Quests.Add(Id, EQuestState::Active);
 	const FKAPQuestRow* Q = UKAPDataSubsystem::Get(this)->Quest(Id);
 	if (bAnnounce && Q) Toast((Q->Kind == "side" ? Fmt(TEXT("Қосымша тапсырма: ")) : Fmt(TEXT("Жаңа тапсырма: "))) + Q->Title, "info");
@@ -1130,6 +1131,7 @@ void AKAPGameMode::Tick(float Dt)
 {
 	Super::Tick(Dt);
 	Dt = FMath::Min(Dt, 0.05f);
+	{ const FString Sp = StoryProgress(Id); if (!Sp.IsEmpty()) return Sp; }
 	if (!Weather) return;
 	FKAPSession& Ss = S();
 	UKAPAudio* Au = UKAPAudio::Get(this);
@@ -1143,6 +1145,7 @@ void AKAPGameMode::Tick(float Dt)
 			if (!CineCam) CineCam = GetWorld()->SpawnActor<ACameraActor>();
 			const float T = GetWorld()->GetRealTimeSeconds();
 			if (bMenuScene)
+	{ const FString St = StoryObjective(); if (!St.IsEmpty()) return St; }
 			{
 				// қолмен ұстаған камера: баяу жақындап-алыстайды, сәл тербеледі
 				const FVector Fw = (MenuLook - MenuCamBase).GetSafeNormal2D(), Rt(-Fw.Y, Fw.X, 0);
@@ -1178,7 +1181,8 @@ void AKAPGameMode::Tick(float Dt)
 		return;
 	}
 	if (bPlayerDead) return;
-	Simulate(Dt);
+	StoryExpTick(Dt);
+	Simulate(StoryReading() ? 0.f : Dt); // диалог оқып тұрғанда уақыт пен ұңғымалар тоқтайды
 	Director(Dt);
 	StoryTick(Dt);
 	ContractTick(Dt);
@@ -1262,11 +1266,11 @@ void AKAPGameMode::Simulate(float Dt)
 			// найзағай ұңғымаға (150 м ішінде) түссе — сол ұңғымада электр ақауы; әйтпесе сирек кездейсоқ ақау (желі арқылы)
 			int32 Near = -1; float Best = 15000.f;
 			for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok) { const float Dd = FVector::Dist2D(FVector(WM->Wells[i].PosM() * 100.0, 0), Weather->Env.StrikeAt); if (Dd < Best) { Best = Dd; Near = i; } }
-			if (Near >= 0) WM->StartFault(Ss, Near, EFaultType::Electric, TEXT("ұңғымаға найзағай түсті"));
+			if (Near >= 0) { if (Rng.FRand() < 0.5f && WM->CanRandomFault(Ss, Near)) WM->StartFault(Ss, Near, EFaultType::Electric, TEXT("ұңғымаға найзағай түсті")); }
 			else if (Rng.FRand() < 0.12f)
 			{
 				TArray<int32> C;
-				for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok && Ss.Regions[WM->Wells[i].Row.Region]) C.Add(i);
+				for (int32 i = 0; i < Ss.Wells.Num(); i++) if (Ss.Wells[i].State == EWellState::Ok && Ss.Regions[WM->Wells[i].Row.Region] && WM->CanRandomFault(Ss, i)) C.Add(i);
 				if (C.Num()) WM->StartFault(Ss, C[Rng.RandRange(0, C.Num() - 1)], EFaultType::Electric, TEXT("найзағай электр желісіне түсті"));
 			}
 		}
@@ -1541,6 +1545,8 @@ void AKAPGameMode::OnPlayerDied()
 	bPlayerDead = true;
 }
 void AKAPGameMode::RespawnPlayer()
+	// Сапардың бөгетіне бірінші оқ атылса — бейбіт адамға шабуыл емес: бөгеттегілер бандит болып жауап береді
+	if (StoryRoadblockNPCs.Contains(N)) { Ss.Flags.Add("st_roadblock_fight", 1); for (auto& W : StoryRoadblockNPCs) if (AKAPNPC* X = W.Get()) if (!X->bDead) { X->Faction = EKAPFaction::Bandit; X->TalkId = NAME_None; } }
 {
 	bPlayerDead = false;
 	FKAPSession& Ss = S();
@@ -1591,15 +1597,11 @@ void AKAPGameMode::OnWellRepaired(int32 Index, bool bByBrigade)
 		Ss.bBrigadesUnlocked = true;
 		Radio(TEXT("Кеніш: үш жөндеу бригадасы жұмысқа дайын. Планшеттегі «Бригадалар» бөлімінен кесте құрыңыз."), "info");
 	}
-	if (!Ss.bPermitAccess && Ss.WellsRepaired >= D->Cfg("accessPermitWells", 5))
-	{
-		Ss.bPermitAccess = true;
-		Radio(TEXT("Күзет: сізге кеніш басқармасына кіру рұқсаты берілді. КамАЗ та сіздің қолыңызда."), "ok");
-		for (auto& V : Builder->Vehicles) if (V.IsValid() && V->Id == "kamaz") V->State = "ok";
-		StartQuest("m_hq");
-	}
+	// рұқсатты енді Бекзат өз қолымен береді (S06 «Ашылған қақпа», KAPStoryExpansion.cpp)
+	if (!Ss.bPermitAccess && Ss.WellsRepaired >= D->Cfg("accessPermitWells", 5)) StoryPermitReady();
 	if (!bByBrigade) { SetCheckpoint(); Save(true); }
 }
+	StoryOnKilled(N, bByPlayer);
 
 // =====================================================================
 // CSP
@@ -1761,6 +1763,7 @@ void AKAPGameMode::SpotUse(AKAPInteractSpot* Sp)
 	}
 	else if (A == TEXT("hq_radio") && QuestState("m_report") == EQuestState::Active) SendReport();
 	else if (A == TEXT("pickup"))
+	{ const FString St = StorySpotText(Sp); if (!St.IsEmpty()) return St; }
 	{
 		Toast(TEXT("Алынды: ") + GiveItems(Sp->Items), "ok");
 		const bool bPart = Sp->Items.Contains("car_part");
@@ -1780,6 +1783,7 @@ void AKAPGameMode::VehicleInteract(AKAPVehicleHandle* V)
 	{
 		Toast(V->Id == "btr" ? TEXT("БТР — жасақтармен одақтас болғанда (қатынас ≥ 50) Төлеген ақсақал береді") : V->Id == "kamaz" ? TEXT("КамАЗ — басқармаға кіру рұқсатымен ашылады") : TEXT("Су тасушы — су қоймасын қалпына келтіргенде ашылады"), "info");
 		return;
+	if (StorySpotUse(Sp)) return;
 	}
 	if (V->State == "radiator")
 	{
@@ -1974,6 +1978,7 @@ void AKAPGameMode::Talk(AKAPNPC* N)
 	if (T == "worker" && Ss.Workers.IsValidIndex(N->WorkerIndex))
 	{
 		FKAPWorker& K = Ss.Workers[N->WorkerIndex];
+	if (StoryTalk(N)) return; // кеңейтілген сюжеттің сахналары (Ерлан, Мәрия, Бекзат S06, бөгет...)
 		static const TCHAR* St[] = { TEXT("сау"), TEXT("уланған"), TEXT("ауру"), TEXT("өлім алдында"), TEXT("қайтыс болды") };
 		FString Tx = FString::Printf(TEXT("%s, %d жаста. %s.\nДоза: %d мЗв · күйі: %s."), *K.Name, K.Age, *K.Family, FMath::RoundToInt32(K.Dose), St[FMath::Clamp(K.State, 0, 4)]);
 		Tx += K.State == 0 ? TEXT("\n— Жағдайымыз жақсы, инженер. Тек ұңғымаларды тастап кетпеңіз.") : K.State == 1 ? TEXT("\n— Басым айналып тұр... жүрегім айнып жүр.") : K.State == 2 ? TEXT("\n— Тұра алмай жатырмын... Көмектесіңізші.") : TEXT("\n— ...(әрең дем алып жатыр)");
@@ -2151,6 +2156,7 @@ void AKAPGameMode::Intro()
 	// көлікке, адамға соқтықпайды (әйтпесе есіктен шыққанда физика автобусты итеріп жібереді)
 	if (Hero)
 	{
+	if (bSuccess || Why == TEXT("Аймақ ерте жабылды.")) S().Flags.Add("st_final_report_sent", 1);
 		Hero->SetActorHiddenInGame(true); Hero->bPersistent = true;
 		Hero->GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
 		Hero->GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
@@ -2396,27 +2402,23 @@ void AKAPGameMode::MotherScene(bool bErlanWasAlive, bool bSuccess)
 	if (Hero) Hero->SetActorRotation(FRotator(0, 200, 0));
 	if (W1) W1->SetActorRotation(FRotator(0, 30, 0));
 	if (W2) W2->SetActorRotation(FRotator(0, 20, 0));
-	struct FLine { float T; FString Kk, Ru, Who; };
-	TArray<FLine> Lines = {
-		{ 1, bErlanWasAlive ? TEXT("Соңғы күні №3 ұңғымада қышқыл қайта ағып кетті. Ерлан Сейітов клапанды жабу үшін ішке кірді. Басқаларды құтқарды... өзі оралмады.") : TEXT("Ерлан Сейітов, 19 жас. Сәулеленуден қайтыс болды."),
-			bErlanWasAlive ? TEXT("В последний день на скважине №3 снова потекла кислота. Ерлан Сеитов вошёл закрыть клапан. Он спас остальных... а сам не вернулся.") : TEXT("Ерлан Сеитов, 19 лет. Умер от облучения."), FString() },
-		{ 10, TEXT("Балам... Ерлан... құлыным менің..."), TEXT("Сынок... Ерлан... жеребёночек мой..."), TEXT("Ана") },
-		{ 17, TEXT("Оқуыңды бітіремін деп едің ғой... Қайтып келемін деп едің ғой..."), TEXT("Ты же обещал доучиться... Обещал вернуться..."), TEXT("Ана") },
-		{ 25, TEXT("Балам-ау... жалғызым-ау..."), TEXT("Сыночек... единственный мой..."), TEXT("Ана") },
-	};
+	// Сценарий S12: жейде, екі кесе, Ерланның хабары, эпилог — тек шынымен болған әрекеттерге сүйенеді (KAPStoryExpansion.cpp)
+	TArray<FKAPStoryLine> Lines;
+	float LamentT = 9.f;
+	const float Dur = StoryMotherLines(bErlanWasAlive, bSuccess, Lines, LamentT);
 	TSharedRef<int32> Li = MakeShared<int32>(0);
 	TSharedRef<bool> bLament = MakeShared<bool>(false);
 	TWeakObjectPtr<AKAPNPC> WM = Mother;
 	const FVector Cc(C.X * 100, C.Y * 100, Z);
-	StartCine(48.f, [this, Lines, Li, bLament, WM, Cc](float T, float Dt)
+	StartCine(Dur, [this, Lines, Li, bLament, WM, Cc, LamentT, Dur](float T, float Dt)
 	{
 		FKAPSession& S2 = S();
 		while (*Li < Lines.Num() && T >= Lines[*Li].T) { Subtitle(Lines[*Li].Kk, Lines[*Li].Ru, Lines[*Li].Who, 7); (*Li)++; }
-		if (T > 9 && !*bLament) { *bLament = true; UKAPAudio::Get(this)->StopLoops(); UKAPAudio::Get(this)->Lament(); FTimerHandle H; GetWorldTimerManager().SetTimer(H, [this]() { UKAPAudio::Get(this)->Lament(); }, 20.f, false); }
+		if (T > LamentT - 1.f && !*bLament) { *bLament = true; UKAPAudio::Get(this)->StopLoops(); UKAPAudio::Get(this)->Lament(); FTimerHandle H; GetWorldTimerManager().SetTimer(H, [this]() { UKAPAudio::Get(this)->Lament(); }, 20.f, false); }
 		if (AKAPNPC* M = WM.Get()) M->GetMesh()->SetRelativeRotation(FRotator(FMath::Sin(T * 2.2f) * 3.f, -90, 0));
-		S2.Time += Dt * 0.004;
+		S2.Time += Dt * 0.004 * 48.f / Dur; // ұзарған сахнада да күн бұрынғыдай баяу батады
 		// камера баяу алыстайды, күн батып бара жатыр
-		const float K = Ease(Seg(T, 4, 46));
+		const float K = Ease(Seg(T, 4, Dur - 2.f));
 		const float A = -0.6f + K * 0.5f, R = 400 + K * 5500;
 		CineCamera(Cc + FVector(FMath::Cos(A) * R, FMath::Sin(A) * R + 100, 150 + K * 2200), Cc + FVector(0, 100, 80 + K * 200), 55);
 	}, [this, bSuccess]() { for (auto& A : CineActors) if (A.IsValid()) A->Destroy(); CineActors.Reset(); Credits(bSuccess); });
@@ -2435,3 +2437,4 @@ void AKAPGameMode::Credits(bool bSuccess)
 	T += TEXT("\n\n\nУран өндірісіндегі адамдардың ауыр еңбегі мен тәуекеліне арналады.\n\nKAP Simulator · Оқиғалар мен кейіпкерлер ойдан шығарылған.\n«QazUran» — ойдан шығарылған компания.\n\n\nEsc — басты мәзір");
 	CreditsText = T; CreditsT = 0; bCredits = true; bCinematic = true;
 }
+	T += StoryCreditsText();

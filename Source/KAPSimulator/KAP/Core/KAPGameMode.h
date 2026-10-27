@@ -93,6 +93,52 @@ public:
 	void RespawnPlayer();
 	bool bPlayerDead = false;
 
+	// ---- «Кезек аяқталған жоқ» — кеңейтілген сюжет (KAPStoryExpansion.cpp, тест: KAPStoryTest.cpp, -kapstorytest) ----
+	struct FKAPStoryLine { float T; FString Kk, Ru, Who; };
+	void StoryExpTick(float Dt);
+	bool StoryTalk(AKAPNPC* N);
+	FString StorySpotText(const AKAPInteractSpot* Spot) const;
+	bool StorySpotUse(AKAPInteractSpot* Spot);
+	FString StoryProgress(FName Id) const;
+	FString StoryObjective() const;
+	/** F1 «Келесі әрекет» кеңесі жаңа тараулар үшін */
+	FString StoryGuidance() const;
+	void StorySpawnPeople();
+	void StoryPermitReady();
+	void StoryOnKilled(AKAPNPC* N, bool bByPlayer);
+	/** Диалог оқылып жатыр — ойын уақыты мен ұңғымалар тоқтайды */
+	bool StoryReading() const;
+	float StoryMotherLines(bool bErlanWasAlive, bool bSuccess, TArray<FKAPStoryLine>& Out, float& LamentT);
+	FString StoryCreditsText() const;
+	void StartStoryTest();
+	AKAPInteractSpot* FindSpotForTest(const TCHAR* Action) const;
+	/** Соңғы сюжет диалогының таңдаулары (тест таңдауды осы арқылы жасайды) */
+	void StoryPick(int32 I);
+	TArray<FKAPDialogOption> StoryOpts;
+	void SDialog(const FString& Name, const FString& Text, TArray<FKAPDialogOption> Opts);
+	int32 StoryErlanIndex() const;
+	AKAPNPC* StoryErlan() const;
+	bool StoryErlanAlive() const;
+	void StoryErlanTalk(AKAPNPC* N);
+	void StoryMariyaTalk(AKAPNPC* N);
+	void StoryBekzatS06(AKAPNPC* N);
+	void StoryRoadblockTalk(AKAPNPC* N);
+	void StoryResolveRoadblock(const FString& Line);
+	void StorySpawnRoadblock();
+	void StorySpawnSapar();
+	void StorySaparTalk();
+	void StoryReadJournal(int32 Page);
+	void StoryDirectorCall();
+	void StoryRepeaterDone();
+	void StoryReportReview();
+	void StoryTarget(FVector2D PosM, const FString& Title);
+	TArray<TWeakObjectPtr<AKAPNPC>> StoryRoadblockNPCs, StoryHiredNPCs;
+	TArray<TWeakObjectPtr<AActor>> StoryProps;
+	TWeakObjectPtr<AKAPInteractSpot> StoryRepeater;
+	float StoryAcc = 0.f, StoryRingT = 0.f;
+	bool bStoryBypass = false, bStoryHoldWait = false, bStoryRoadblockAsked = false;
+	bool bStoryRoadblockSpawned = false, bStoryHiredSpawned = false, bStoryBagsSpawned = false, bStoryLedgerSpawned = false;
+
 	// ---- навигатор, қауіп ----
 	void RefreshDangerZones();
 	double DangerAt(double Xm, double Ym) const;

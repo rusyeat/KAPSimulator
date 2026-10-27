@@ -1,10 +1,10 @@
 Name,Value,Note
 dayLengthSec,2880,1 ойын тәулігі = 48 минут
 startHour,12.5,басталатын сағат
-stage1Hours,6,ақау → ағу
-stage2Hours,5,ағу → өрт
-fireHours,2,өрт → жоғалу
-hazardScale,0.06,Байес P × осы = сағаттық қауіп
+stage1Hours,10,ақау → ағу
+stage2Hours,8,ағу → өрт
+fireHours,3,өрт → жоғалу
+hazardScale,0.03,Байес P × осы = сағаттық қауіп
 neighborRadius,420,көрші радиусы (м)
 leakDoseRate,7,ағу кезіндегі доза мЗв/сағ
 fireDoseBurst,260,өрт басталғандағы доза
@@ -28,3 +28,6 @@ mutationPerDeath,1.2,өлім кезіндегі мутация
 mutationPerBoss,-10,босс өлгенде
 brigadeUnlockWells,3,бригадалар ашылуы
 accessPermitWells,5,кіру рұқсаты
+maxOpenFaults,3,бір мезгілде ашық ақау шегі (бригадалардан кейін)
+maxOpenFaultsEarly,2,бір мезгілде ашық ақау шегі (бригадаларға дейін)
+faultGraceHours,10,жөндеуден кейін кездейсоқ ақаусыз сағат

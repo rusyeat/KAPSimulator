@@ -44,6 +44,8 @@ public:
 	KAPAI::FWellEvidence Evidence(const FKAPSession& S, int32 Index, float EnvTemp) const;
 	double Hazard(int32 Index) const;
 	double TimeToFailure(const FKAPSession& S, int32 Index) const;
+	/** Кездейсоқ ақау рұқсат па: жөндеуден кейінгі тыныштық уақыты және бір мезгілде ашық ақаулар шегі */
+	bool CanRandomFault(const FKAPSession& S, int32 Index) const;
 	int32 DeadCount(const FKAPSession& S) const;
 	int32 Exposure(const FKAPSession& S, const FKAPWorker& K) const;
 	double DoseRate(const FKAPSession& S, const FKAPWorker& K) const;

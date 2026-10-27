@@ -36,6 +36,8 @@ public:
 	void Scroll(float D);
 	/** Толық экран карта (M) — KAPHUDMap.cpp */
 	void ToggleMap() { bMap = !bMap; bMapCentered = false; bMapDrag = false; if (bMap) bTablet = false; }
+	/** Диалог ашық па (оқып тұрғанда ойын уақыты тоқтайды) */
+	bool IsDialogOpen() const { return bDialog; }
 	bool IsMapOpen() const { return bMap; }
 	/** Тест үшін: карта ортасы, масштабы және (қаласаңыз) тінтуірдің әлемдегі орны */
 	void MapDebug(FVector2D C, float Z, FVector2D MouseW = FVector2D(1e9, 1e9)) { MapCenter = C; MapZoom = Z; bMapCentered = true; MapTestMouseW = MouseW; bMapTestMouse = MouseW.X < 1e8; }
