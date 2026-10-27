@@ -1,6 +1,6 @@
 # KAP Simulator — жобаның толық құжаты (басқа ЖИ мен әзірлеушіге арналған)
 
-Жаңартылған күні: 2026-10-27. Соңғы код коммиті: `2f7445c` (`main`, https://github.com/rusyeat/KAPSimulator).
+Жаңартылған күні: 2026-10-27. Соңғы код коммиті: `3530a6e` (`main`, https://github.com/rusyeat/KAPSimulator).
 Құжатты Claude Code мен OpenAI Codex бірге жүргізеді. Бұл файл жобаның не екенін, не жасалғанын, кодтың қай жерде
 жатқанын, қай құралдар мен дереккөздер қолданылғанын, қалай құрастырылатынын және нені абайлау керегін бір жерде түсіндіреді.
 
@@ -20,11 +20,11 @@
 - **Almost everything is procedural/code-built:** world layout from CSV tables, terrain from `KAPTerrain.h`,
   buildings/vehicles/props from code or SDF mesh generators, UI on Canvas, cinematics in C++ (no Sequencer),
   FX without Niagara, procedural audio synth + recorded banks. Characters, animals, creatures and weapons are Blender-built.
-- **Latest playable build:** `D:\KAPSimulator\Saved\Releases\AnimalRagdoll_2026-10-27\Windows\KAPSimulator.exe`
-  (2026-10-27; `Play.bat` and `Ойынды ашу.lnk` in the project root open it). Same tree as `PlayerExperience_2026-10-24`
-  (packaged checks 86/86) plus the animal ragdoll fix; `-kapanimaltest` passed on the package. It includes all committed work
-  **and** Codex's uncommitted work.
-- **Git state:** `main` = commit `2f7445c` (animal ragdoll fix) + this doc. Large uncommitted Codex work is on disk (see §14). Never commit someone else's
+- **Latest playable build:** `D:\KAPSimulator\Saved\Releases\StoryExpansion_2026-10-27\Windows\KAPSimulator.exe`
+  (2026-10-27; `Play.bat` and `Ойынды ашу.lnk` in the project root open it). Previous builds plus the story expansion;
+  `-kapstorytest` passed on the package (34/34). It includes all committed work **and** Codex's uncommitted work
+  (but not Codex's 4K story characters in `SourceArt/StoryCharacters4K`, which were not imported yet).
+- **Git state:** `main` = commit `3530a6e` (story expansion) + this doc. Large uncommitted Codex work is on disk (see §14). Never commit someone else's
   uncommitted hunks; stage only your own.
 - **Build editor:** `D:\ue5\UE_5.8\Engine\Build\BatchFiles\Build.bat KAPSimulatorEditor Win64 Development -Project="D:\KAPSimulator\KAPSimulator.uproject" -WaitMutex`
   (Codex adds `-NoUBA -UBARootDir=D:\KAPSimulator\Saved\BuildCache\UBA -MaxParallelActions=2` because UBA can hang at the end).
@@ -99,12 +99,14 @@ F1 — нұсқаулық, Esc — үзіліс/баптаулар, F9 — уа�
 
 ## 2. Қазіргі күй (2026-10-27)
 
-**Ойнау үшін ең соңғы нұсқа:** `D:\KAPSimulator\Saved\Releases\AnimalRagdoll_2026-10-27\Windows\KAPSimulator.exe`
+**Ойнау үшін ең соңғы нұсқа:** `D:\KAPSimulator\Saved\Releases\StoryExpansion_2026-10-27\Windows\KAPSimulator.exe`
 (Win64 Development, 2026-10-27). `Play.bat` пен `Ойынды ашу.lnk` осыны ашады (ескі launcher — `Play_before_update.bat`;
-алдыңғы нұсқа `PlayerExperience_2026-10-24` орнында қалды). Бұл — `PlayerExperience` ағашы + жануар рагдоллын түзету:
-`-kapanimaltest` пакетте өтті (`-userdir=Saved\Tmp\AnimalTestUserDir`), кук 0 қате / 9 ескі ескерту,
-`Binaries\Win64\KAPSimulator.exe` SHA256 `91E8E2FC…B086`. 86/86 тексеру алдыңғы нұсқада жасалған
-(`Saved/PlayerExperience_20261024/validation.json`); жаңа пакетте олар қайта іске қосылған жоқ. Ішінде барлық коммиттелген және коммиттелмеген жұмыс бар.
+алдыңғы нұсқалар `AnimalRagdoll_2026-10-27`, `PlayerExperience_2026-10-24` орнында қалды). Бұл — `AnimalRagdoll` ағашы +
+кеңейтілген сюжет (§5.1): `-kapstorytest` пакетте өтті, 34/34 (`-userdir=Saved\Tmp\StoryTestUserDir`, скриншоттар сонда),
+кук 0 қате / 10 ескерту, `KAPSimulator\Binaries\Win64\KAPSimulator.exe` SHA256 `CC615056…ACE81`. 86/86 тексеру
+`PlayerExperience` нұсқасында жасалған (`Saved/PlayerExperience_20261024/validation.json`); жаңа пакетте олар қайта іске
+қосылған жоқ. Ішінде барлық коммиттелген және коммиттелмеген жұмыс бар (Codex-тың 4K сюжет кейіпкерлерінен басқа — олар әлі
+тек `SourceArt/StoryCharacters4K`-та, ойынға импортталмаған).
 
 Барлық релиздер (`Saved\Releases\`, ескілерінен жаңасына қарай; әрқайсысы алдыңғысының бәрін қамтиды):
 
@@ -120,6 +122,7 @@ F1 — нұсқаулық, Esc — үзіліс/баптаулар, F9 — уа�
 | `LivingWorld_2026-10-24` | Codex | Жол қозғалысы, 4 КПП, 6 кейіпкер мен 6 тапсырма, `I` инвентарь, отыру, перне ауыстыру | `Saved/LivingWorld_20261024/LIVING_WORLD_UPDATE.md` |
 | `PlayerExperience_2026-10-24` | Codex | Қару V3, жеке сөмке, 5 бөлімді баптаулар, экранды растау/қайтару, F1 нұсқаулық | `Saved/PlayerExperience_20261024/PLAYER_EXPERIENCE_UPDATE.md` |
 | `AnimalRagdoll_2026-10-27` | Claude | Өлген жануарлар ауада ілінбей, жерге табиғи жатады (сүйек масштабы, жаңа физика ассеті) | коммит `2f7445c`, `-kapanimaltest` |
+| `StoryExpansion_2026-10-27` | Claude | Кеңейтілген сюжет: S01–S12, директор Серік мен Сапар Аманов, бөгет, ретранслятор, баяу ұңғымалар (§5.1) | коммит `3530a6e`, `-kapstorytest` 34/34 |
 
 Таныстыру материалдары: `Saved\Presentation\` — 10 скриншот (`01_dala_kun_batuy.png` … `10_vagon_tun.png`) және
 15 секундтық тизер `KAP_Trailer_15s.mov` (ProRes) / `.mp4`.
@@ -154,7 +157,7 @@ QAIRU тапсырмасы `C:\Users\rusya\Downloads\qairu\QAIRU_AI_Storytelling
 | 10-23 | `c22b1fb` | Сексеуіл тәжі жеңілдетілді, unity-құрастыру атау қақтығыстары |
 | 10-23 | `b82ce10` | 169 ElevenLabs дауысы импортталды, `-kapaudiocheck` |
 | 10-23 | `96f5b03` | Кіріспе: көлік бұзылуы (бу, апат шамы, антифриз), есік ашылып кейіпкер түседі, шын жүру анимациясы; NPC LOD камераға қарай; көлік есіктері; «қорап дене» → жиырылған костюм; жәшіктер жерге түсті; эрозиялы орманды таулар (75 мың шырша); бу/түтін материалы; `-kapfixshots` |
-| 10-27 | (осы коммит) | Кеңейтілген сюжет «Кезек аяқталған жоқ» (Codex сценарийі бойынша): S01–S12 сахналары, Мәрия апа, директор Серік пен Сапар Аманов, Бекзаттың рұқсаты, Сапардың жол бөгеті, директордың қоңырауы мен бұғатталған арна, ретранслятор, есеп алдындағы шолу, жаңа финал мәтіндері; ұңғымалар баяу бұзылады; диалог оқылғанда уақыт тоқтайды; еркін мәтінді мини-ойын қадамы түзетілді; `-kapstorytest` |
+| 10-27 | `3530a6e` | Кеңейтілген сюжет «Кезек аяқталған жоқ» (Codex сценарийі бойынша): S01–S12 сахналары, Мәрия апа, директор Серік пен Сапар Аманов, Бекзаттың рұқсаты, Сапардың жол бөгеті, директордың қоңырауы мен бұғатталған арна, ретранслятор, есеп алдындағы шолу, жаңа финал мәтіндері; ұңғымалар баяу бұзылады; диалог оқылғанда уақыт тоқтайды; еркін мәтінді мини-ойын қадамы түзетілді; `-kapstorytest` |
 | 10-27 | `2f7445c` | Өлген жануарлар ауада ілінбей, жерге табиғи жатады: FBX-тегі ×100 сүйек масштабы жойылды (Blender `to_cm`, бес жануар қайта экспортталып импортталды), әр сүйекке капсула мен буын шегі бар жаңа физика ассеті (`BuildAnimalPhysics`), өлгенде анимация тоқтайды, 6 с кейін денелер ұйықтайды; `-kapanimaltest` |
 
 **Коммиттелмеген (Codex, дискіде, соңғы EXE-де бар):**
